@@ -188,7 +188,10 @@ func isolate(s Spec) error {
 	if err := unix.Mount("", "/", "", unix.MS_REMOUNT|unix.MS_BIND|unix.MS_RDONLY|unix.MS_NOSUID|unix.MS_NODEV, ""); err != nil {
 		return fmt.Errorf("remount new root read-only: %w", err)
 	}
-	return unix.Chdir(cwd)
+	if err := unix.Chdir(cwd); err != nil {
+		return fmt.Errorf("working directory %s is not inside the new root: %w", cwd, err)
+	}
+	return nil
 }
 
 // dropCaps removes every capability for good: uid 0 in the namespace gets
@@ -285,6 +288,7 @@ func CheckKernel(self string) error {
 		}
 	}
 	cmd := exec.Command(self, SelfTestArg, base)
+	cmd.Dir = filepath.Join(base, "root") // programs always start inside the root
 	cmd.Env = []string{}
 	cmd.SysProcAttr = attr()
 	out, err := cmd.CombinedOutput()
