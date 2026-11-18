@@ -6,7 +6,10 @@ All notable changes are listed here. Format: [Keep a Changelog](https://keepacha
 
 ### Added
 
-- The server: `sh` (allowlisted tools and flags, pipes and loops, confined per command), `more` (paging of long or running output), `create` (new files only), bearer-token auth over Streamable HTTP.
+- The server: `sh` runs command lines (pipes, loops) with allowlisted GNU tools and options, each program under Landlock (directory only, no network, no foreign programs) and rlimits; built-in `rm` moves to `.trash/`.
+- `more` pages output over 30 KB or still running after 15 s; `create` makes new files only (`--create-in`).
+- Streamable HTTP endpoint with a bearer token (≥ 32 bytes, private file), body and concurrency limits, logs without file contents.
+- Nix package that pins every tool to a store path; Go tests run in the package build. ADR 0005.
 
 ## [0.1.0] - 2026-11-18
 

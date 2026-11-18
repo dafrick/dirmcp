@@ -79,7 +79,7 @@ The exec helper is `dirmcp` itself, re-executed as `dirmcp __exec <manifest-entr
 | IPC | no abstract UNIX sockets or signals outside the sandbox (ABI 6) |
 
 - Landlock is **required, not best effort**: if the kernel lacks the ABI we need (6), the server refuses to start.
-- rlimits: CPU 60 s, address space 1 GiB, file size 100 MiB, open files 256, processes 64. Wall time 5 min, then the process group is killed.
+- rlimits, set after Landlock (the helper's own Go runtime needs more address space): CPU 60 s, address space 1 GiB, file size 100 MiB, open files 256, no core dumps. No process-count rlimit: `RLIMIT_NPROC` counts all processes of the user, so it belongs in the service unit (`TasksMax`, next change). Wall time 5 min, then the process group is killed.
 - The server process itself has no Landlock rules (it needs the socket and the token). systemd hardening for it comes with the NixOS module.
 
 ### Output and long runs
@@ -124,6 +124,13 @@ The exec helper is `dirmcp` itself, re-executed as `dirmcp __exec <manifest-entr
 | Read other callers' output via `more` | Single token per server; IDs 128-bit random |
 
 **What a token holder can do, by design:** read everything under the root; with `--writable`, change or delete it (`rm` goes to trash; `mv`, `sed -i` and redirections overwrite). That is the point of the tool, and the README says so.
+
+## Found during apply
+
+- Both sides of a pipeline write stderr from different goroutines: `Run` serialises writes to its output.
+- The Landlock self-test restricts the calling process, so it always runs in a child (`dirmcp __selftest`).
+- coreutils 9.12 adds terminal escape codes to `--help`; the generator strips them and runs tools with `TERM=dumb`.
+- `rg` is started with `--no-config`, so `RIPGREP_CONFIG_PATH` can never add options.
 
 ## Risks / Trade-offs
 

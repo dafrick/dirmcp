@@ -1,0 +1,3 @@
+# 0005. Real Unix tools with option allowlists, confined by Landlock
+
+In the context of giving remote AI clients shell-like access to one directory, facing the choice between re-implementing tools and running arbitrary commands, we decided for the real GNU tools from a fixed list, each with an option allowlist generated from its `--help` minus a hand-kept denylist, interpreted by `mvdan/sh` and started under Landlock (read the root and the tools' closure, write only if allowed, execute only the closure, no network), and neglected Go re-implementations, a system shell and container sandboxes, to achieve the tools and options models already know with kernel-enforced limits, accepting Linux 6.12+ only and option tables that must be regenerated when tools change.
