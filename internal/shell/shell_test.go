@@ -50,6 +50,9 @@ func setup(t *testing.T, writable bool) *env {
 	self, err := os.Executable()
 	must(t, err)
 	if err := confine.CheckKernel(self); err != nil {
+		if os.Getenv("DIRMCP_REQUIRE_LANDLOCK") != "" {
+			t.Fatal(err)
+		}
 		t.Skip(err)
 	}
 	base := t.TempDir()
@@ -174,6 +177,11 @@ func TestWritable(t *testing.T) {
 	e.ok("rm -rf x && ls -A .trash", "x.")
 	if _, err := os.Stat(filepath.Join(e.root, "x")); !os.IsNotExist(err) {
 		t.Errorf("x still there after rm")
+	}
+	// RLIMIT_FSIZE (100 MiB): the write stops at the limit.
+	e.run("head -c 200000000 /dev/zero > big")
+	if st, err := os.Stat(filepath.Join(e.root, "big")); err != nil || st.Size() > 100<<20 {
+		t.Errorf("file size limit not applied: %v %v", st.Size(), err)
 	}
 	e.fails("rm .", "outside")
 	e.fails("rm ../secret", "outside")

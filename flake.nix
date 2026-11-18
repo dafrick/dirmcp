@@ -106,7 +106,7 @@
           pname = "dirmcp";
           version = nixpkgs.lib.trim (builtins.readFile ./VERSION);
           src = nixpkgs.lib.cleanSource ./.;
-          vendorHash = null;
+          vendorHash = "sha256-nLJNxHh6TLBe1OfjfRPesLe8ynNdhxG4Mgnm0fX2eIw=";
           env.CGO_ENABLED = 0; # Landlock needs all-threads syscalls, not cgo
           subPackages = [ "cmd/dirmcp" ];
           ldflags = [
@@ -115,8 +115,14 @@
             "-X main.version=${nixpkgs.lib.trim (builtins.readFile ./VERSION)}"
             "-X main.defaultTools=${toolsManifest pkgs}"
           ];
-          # Tests start the real tools under Landlock.
-          preCheck = "export DIRMCP_TOOLS=${toolsManifest pkgs}";
+          # All packages' tests, with the real tools under Landlock.
+          # DIRMCP_REQUIRE_LANDLOCK turns "skip without Landlock" into a failure.
+          checkPhase = ''
+            runHook preCheck
+            export DIRMCP_TOOLS=${toolsManifest pkgs} DIRMCP_REQUIRE_LANDLOCK=1
+            go test -count=1 ./...
+            runHook postCheck
+          '';
           meta = {
             description = "MCP server for remote, shell-like access to one directory";
             homepage = "https://github.com/dafrick/dirmcp";
