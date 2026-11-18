@@ -52,8 +52,10 @@ Only structural decisions become ADRs. Everything else stays in the OpenSpec des
 
 Work inside `nix develop`. It installs git hooks:
 
-- pre-commit: formatting (`nixfmt`) and secret scanning of staged changes (`gitleaks`). `nix flake check` runs these.
-- pre-push: secret scanning of the full history (`gitleaks`) and the release check (`scripts/check-release.sh`).
+- pre-commit: formatting (`nixfmt`, `gofmt`) and secret scanning of staged changes (`gitleaks`). `nix flake check` runs these and builds the package, which runs `go test ./...` with the real tools. The sandbox tests need unprivileged user namespaces and Landlock; where they are missing (Ubuntu with AppArmor, most build sandboxes) they skip. CI enables user namespaces and runs them with `DIRMCP_REQUIRE_SANDBOX=1`, so there they must pass.
+- pre-push: secret scanning of the full history (`gitleaks`), `go vet`, and the release check (`scripts/check-release.sh`).
+
+In the dev shell, `go test ./...` uses the packaged tools (`DIRMCP_TOOLS`). After changing tool versions or the program list, regenerate the option tables with `go generate ./internal/argcheck`; `TestTablesMatchHelp` fails until you do. New dangerous options go into `denied` in `internal/argcheck/argcheck.go`, with a test in `TestDenied`. After a dependency change, update `vendorHash` in `flake.nix` (the build prints the right one).
 
 CI runs the same checks as a backstop, not as the first line. A ruleset on `main` requires the `checks` job and blocks force-pushes and deletion.
 
