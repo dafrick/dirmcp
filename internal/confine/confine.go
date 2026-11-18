@@ -91,14 +91,16 @@ func Command(self string, s Spec, program string, args ...string) (*exec.Cmd, er
 	return cmd, nil
 }
 
-// attr: new user (mapped to our own uid and gid), mount and network
-// namespaces, own process group, killed if the server dies.
+// attr: new user, mount and network namespaces, own process group, killed
+// if the server dies. Our uid and gid become 0 inside, so the helper keeps
+// the capabilities it needs to build the new root across its execve; it
+// drops all of them before starting the program (dropCaps).
 func attr() *syscall.SysProcAttr {
 	uid, gid := os.Getuid(), os.Getgid()
 	return &syscall.SysProcAttr{
 		Cloneflags:  syscall.CLONE_NEWUSER | syscall.CLONE_NEWNS | syscall.CLONE_NEWNET,
-		UidMappings: []syscall.SysProcIDMap{{ContainerID: uid, HostID: uid, Size: 1}},
-		GidMappings: []syscall.SysProcIDMap{{ContainerID: gid, HostID: gid, Size: 1}},
+		UidMappings: []syscall.SysProcIDMap{{ContainerID: 0, HostID: uid, Size: 1}},
+		GidMappings: []syscall.SysProcIDMap{{ContainerID: 0, HostID: gid, Size: 1}},
 		Setpgid:     true,
 		Pdeathsig:   syscall.SIGKILL,
 	}
@@ -189,6 +191,36 @@ func isolate(s Spec) error {
 	return unix.Chdir(cwd)
 }
 
+// dropCaps removes every capability for good: uid 0 in the namespace gets
+// none back on execve (securebits, locked), the bounding and ambient sets
+// are emptied, and the current sets are cleared.
+func dropCaps() error {
+	const (
+		noRoot, noRootLocked     = 1 << 0, 1 << 1
+		noFixup, noFixupLocked   = 1 << 2, 1 << 3
+		keepCapsLocked           = 1 << 5
+		noAmbient, noAmbientLock = 1 << 6, 1 << 7
+	)
+	bits := noRoot | noRootLocked | noFixup | noFixupLocked | keepCapsLocked | noAmbient | noAmbientLock
+	if err := unix.Prctl(unix.PR_SET_SECUREBITS, uintptr(bits), 0, 0, 0); err != nil {
+		return fmt.Errorf("securebits: %w", err)
+	}
+	if err := unix.Prctl(unix.PR_CAP_AMBIENT, unix.PR_CAP_AMBIENT_CLEAR_ALL, 0, 0, 0); err != nil {
+		return fmt.Errorf("ambient caps: %w", err)
+	}
+	for c := 0; c <= unix.CAP_LAST_CAP; c++ {
+		if err := unix.Prctl(unix.PR_CAPBSET_DROP, uintptr(c), 0, 0, 0); err != nil && !errors.Is(err, unix.EINVAL) {
+			return fmt.Errorf("drop cap %d: %w", c, err)
+		}
+	}
+	hdr := unix.CapUserHeader{Version: unix.LINUX_CAPABILITY_VERSION_3}
+	var data [2]unix.CapUserData
+	if err := unix.Capset(&hdr, &data[0]); err != nil {
+		return fmt.Errorf("capset: %w", err)
+	}
+	return nil
+}
+
 // RunHelper is the helper's main. It never returns on success.
 // args are the arguments after HelperArg.
 func RunHelper(args []string) {
@@ -212,6 +244,9 @@ func helper(args []string) error {
 	argv := args[2:]
 	if err := isolate(s); err != nil {
 		return fmt.Errorf("isolate: %w", err)
+	}
+	if err := dropCaps(); err != nil {
+		return err
 	}
 	// Not BestEffort: refuse to run if the kernel cannot enforce all of it.
 	if err := abi.Restrict(rules(s)...); err != nil {
@@ -269,6 +304,9 @@ func SelfTest(base string) error {
 	}
 	if _, err := os.Stat("/etc"); !errors.Is(err, os.ErrNotExist) {
 		return fmt.Errorf("/etc is still visible after isolation (%v)", err)
+	}
+	if err := dropCaps(); err != nil {
+		return err
 	}
 	return abi.Restrict(rules(s)...)
 }
