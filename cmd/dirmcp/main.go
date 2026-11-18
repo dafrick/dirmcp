@@ -141,7 +141,13 @@ func readToken(path string) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	if st.Mode().Perm()&0o077 != 0 {
+	// systemd credentials are 0440 inside a directory only the service user
+	// can enter; group read is fine there. Never readable by others.
+	loose := st.Mode().Perm() & 0o077
+	if inCredentials(path) {
+		loose = st.Mode().Perm() & 0o007
+	}
+	if loose != 0 {
 		return nil, fmt.Errorf("token file %s is readable by group or others (mode %o); use 0600 or 0400", path, st.Mode().Perm())
 	}
 	b, err := os.ReadFile(path)
@@ -153,4 +159,14 @@ func readToken(path string) ([]byte, error) {
 		return nil, fmt.Errorf("token in %s is %d bytes; at least 32 needed (e.g. openssl rand -hex 32)", path, len(b))
 	}
 	return b, nil
+}
+
+// inCredentials reports whether path is inside $CREDENTIALS_DIRECTORY.
+func inCredentials(path string) bool {
+	dir := os.Getenv("CREDENTIALS_DIRECTORY")
+	if dir == "" {
+		return false
+	}
+	rel, err := filepath.Rel(dir, path)
+	return err == nil && rel != ".." && !strings.HasPrefix(rel, "../")
 }
