@@ -2,6 +2,13 @@
 
 All notable changes are listed here. Format: [Keep a Changelog](https://keepachangelog.com). Versioning: [SemVer](https://semver.org), see `CONTRIBUTING.md`.
 
+## [0.3.0] - 2026-11-18
+
+### Added
+
+- NixOS module `services.dirmcp.instances.<name>`: one hardened systemd service per served directory, token through systemd credentials. NixOS VM test.
+- README: "Deploying securely".
+
 ## [0.2.1] - 2026-11-18
 
 ### Fixed
