@@ -15,6 +15,6 @@
 
 ## 4. GitHub and checks
 
-- [ ] 4.1 Squash merge only
+- [x] 4.1 Squash merge only; ruleset on `main`; private vulnerability reporting; SECURITY.md
 - [ ] 4.2 Run `nix flake check` and `scripts/check-release.sh --base origin/main` locally, then update the PR description
 - [ ] 4.3 Review posted as PR comment; archive

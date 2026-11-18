@@ -6,4 +6,4 @@ All notable changes are listed here. Format: [Keep a Changelog](https://keepacha
 
 ### Added
 
-- Repo foundations: README, CONTRIBUTING, AGENTS, ADRs 0001–0004, Nix flake with dev shell and git hooks (nixfmt, gitleaks, release check), CI with a release per merged change, Dependabot for GitHub Actions, OpenSpec.
+- Repo foundations: README, CONTRIBUTING, AGENTS, SECURITY, ADRs 0001–0004, Nix flake with dev shell and git hooks (nixfmt, gitleaks, release check), CI with a release per merged change, Dependabot for GitHub Actions, OpenSpec; ruleset on `main`.

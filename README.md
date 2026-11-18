@@ -18,6 +18,7 @@ Status: foundations only. The server comes in the next change (see `openspec/cha
 
 ```
 AGENTS.md, CLAUDE.md   agent instructions (CLAUDE.md imports AGENTS.md)
+SECURITY.md            how to report a vulnerability
 CONTRIBUTING.md        how to make changes
 VERSION, CHANGELOG.md  version and changelog
 flake.nix              dev shell, formatter, checks

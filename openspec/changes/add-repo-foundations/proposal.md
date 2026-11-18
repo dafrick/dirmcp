@@ -11,7 +11,9 @@ dirmcp is a new repo. Before any server code lands, it needs the same way of wor
 - CI: hooks on every PR and `main`, version check on PRs, tag and GitHub Release on `main`.
 - Dependabot for GitHub Actions.
 - OpenSpec initialised (Claude skills), project context and rules in `openspec/config.yaml`.
-- GitHub: squash merge only.
+- SECURITY.md with private vulnerability reporting.
+- GitHub: squash merge only; ruleset on `main` (required `checks`, no force-push or deletion).
+- Difference from agentos: designs need a threat model for anything touching tools, arguments, paths, auth or confinement.
 
 ## Capabilities
 

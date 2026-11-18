@@ -10,11 +10,11 @@
 
 ## Every change is an OpenSpec change
 
-1. **Explore**: `/opsx:explore`.
-2. **Propose** on a new branch: `/opsx:propose`. Start with recon: check the current docs and versions of what the change uses, and record findings in its design. Set the version (see [Versions](#versions-and-releases)), commit, push, and open a **draft PR** into `main` right away.
-3. **Apply**: `/opsx:apply`. Write the test first. Commit each task or logical piece on its own and push often. Then update the PR description.
+1. **Explore**: skill `openspec-explore`.
+2. **Propose** on a new branch: skill `openspec-propose`. Start with recon: check the current docs and versions of what the change uses, and record findings in its design. Set the version (see [Versions](#versions-and-releases)), commit, push, and open a **draft PR** into `main` right away.
+3. **Apply**: skill `openspec-apply-change`. Write the test first. Commit each task or logical piece on its own and push often. Then update the PR description.
 4. **Review**: run an independent review of the implementation. Post its findings as a PR comment, with what was fixed and what was not. Fix in separate commits.
-5. **Archive**: `/opsx:archive`. Commit, push, and update the PR description.
+5. **Archive**: skill `openspec-archive-change`. Commit, push, and update the PR description.
 6. **Merge**: `git fetch --tags`, rebase onto `main`, run `scripts/check-release.sh --base origin/main`, push, mark the PR ready, get it green, squash merge.
 
 The PR description is the living record of the change: what it does, its current status, how it was verified. Keep it current at every step.
@@ -55,7 +55,11 @@ Work inside `nix develop`. It installs git hooks:
 - pre-commit: formatting (`nixfmt`) and secret scanning of staged changes (`gitleaks`). `nix flake check` runs these.
 - pre-push: secret scanning of the full history (`gitleaks`) and the release check (`scripts/check-release.sh`).
 
-CI runs the same checks as a backstop, not as the first line.
+CI runs the same checks as a backstop, not as the first line. A ruleset on `main` requires the `checks` job and blocks force-pushes and deletion.
+
+## Security issues
+
+See [SECURITY.md](SECURITY.md). Never report a vulnerability in a public issue.
 
 ## Versions and releases
 

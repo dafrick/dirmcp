@@ -51,11 +51,16 @@ if [[ -n "$latest" ]]; then
 fi
 
 if [[ "${1:-}" == "--base" ]]; then
+  base=${2:?--base needs a ref}
+  git rev-parse -q --verify "$base^{commit}" >/dev/null || fail "unknown ref '$base'"
   # A base without VERSION (first change in a new repo) counts as 0.0.0.
-  base_version=$(git show "${2:?--base needs a ref}:VERSION" 2>/dev/null | tr -d '[:space:]' || true)
-  base_version=${base_version:-0.0.0}
+  if git cat-file -e "$base:VERSION" 2>/dev/null; then
+    base_version=$(git show "$base:VERSION" | tr -d '[:space:]')
+  else
+    base_version=0.0.0
+  fi
   newer "$version" "$base_version" ||
-    fail "VERSION $version must be greater than $2 ($base_version); rebase and renumber"
+    fail "VERSION $version must be greater than $base ($base_version); rebase and renumber"
 fi
 
 [[ "$(head -n1 <<<"$headings")" == "$version" ]] ||

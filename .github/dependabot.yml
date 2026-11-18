@@ -6,6 +6,8 @@ updates:
     directory: "/"
     schedule:
       interval: "weekly"
+    cooldown:
+      default-days: 7 # skip brand-new releases (supply-chain risk)
     groups:
       actions:
         patterns: ["*"]
