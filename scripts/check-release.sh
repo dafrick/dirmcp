@@ -51,7 +51,9 @@ if [[ -n "$latest" ]]; then
 fi
 
 if [[ "${1:-}" == "--base" ]]; then
-  base_version=$(git show "${2:?--base needs a ref}:VERSION" | tr -d '[:space:]')
+  # A base without VERSION (first change in a new repo) counts as 0.0.0.
+  base_version=$(git show "${2:?--base needs a ref}:VERSION" 2>/dev/null | tr -d '[:space:]' || true)
+  base_version=${base_version:-0.0.0}
   newer "$version" "$base_version" ||
     fail "VERSION $version must be greater than $2 ($base_version); rebase and renumber"
 fi
