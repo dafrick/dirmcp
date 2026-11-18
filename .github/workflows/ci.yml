@@ -22,6 +22,13 @@ jobs:
       - uses: cachix/install-nix-action@3dc140bfc76c49fbd4dd958429132e3746bcb086 # v31.11.5
       - name: pre-commit hooks
         run: nix flake check
+      # Ubuntu's AppArmor blocks unprivileged user namespaces; dirmcp needs
+      # them (and Landlock) to isolate programs. The tests must not skip here.
+      - name: sandbox tests
+        run: |
+          sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
+          nix develop -c sh -c 'DIRMCP_REQUIRE_SANDBOX=1 CGO_ENABLED=0 go test -count=1 ./...'
+
       - name: pre-push hooks
         run: nix develop -c pre-commit run --all-files --hook-stage pre-push
       - name: version above target branch
