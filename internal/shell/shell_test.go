@@ -94,10 +94,18 @@ func (e *env) ok(cmd, want string) {
 	}
 }
 
+// denied is either outcome of touching something outside the root: the
+// path does not exist in the program's root, or Landlock refuses it.
+const denied = "(denied)"
+
 func (e *env) fails(cmd, want string) {
 	e.t.Helper()
 	out, code := e.run(cmd)
-	if code == 0 || !strings.Contains(out, want) {
+	ok := strings.Contains(out, want)
+	if want == denied {
+		ok = strings.Contains(out, "ermission denied") || strings.Contains(out, "No such file")
+	}
+	if code == 0 || !ok {
 		e.t.Errorf("%s: exit %d, output %q; want failure mentioning %q", cmd, code, out, want)
 	}
 }
@@ -136,12 +144,12 @@ func TestOnlyAllowedPrograms(t *testing.T) {
 
 func TestReadOutsideRoot(t *testing.T) {
 	e := setup(t, false)
-	e.fails("cat /etc/passwd", "ermission denied")
-	e.fails("cat ../secret", "ermission denied")
-	e.fails("cat link", "ermission denied") // symlink out of the root
+	e.fails("cat /etc/passwd", denied)
+	e.fails("cat ../secret", denied)
+	e.fails("cat link", denied) // symlink out of the root
 	e.fails("cat < ../secret", "")
 	e.fails("cat < link", "")
-	e.fails("ls /", "ermission denied")
+	e.fails("ls /", denied)
 	e.fails("cd /etc", "outside")
 	e.fails("cd ..", "outside")
 	e.fails("cd link", "")
@@ -226,6 +234,10 @@ func TestNoNetworkNoForeignExec(t *testing.T) {
 		c, err := confine.Command(self, confine.Spec{Root: e.root, Stage: filepath.Join(base, "stage"), Exec: execPaths, Bind: bind},
 			self, "__dial", ln.Addr().String())
 		must(t, err)
+		c.Dir = e.root
+		var stderr bytes.Buffer
+		c.Stderr = &stderr
+		defer func() { t.Log(stderr.String()) }()
 		if err := c.Run(); err != nil {
 			return c.ProcessState.ExitCode()
 		}
@@ -245,7 +257,7 @@ func TestNoNetworkNoForeignExec(t *testing.T) {
 // Paths outside the root do not exist for programs, not even for stat.
 func TestNoMetadataOutside(t *testing.T) {
 	e := setup(t, false)
-	for _, cmd := range []string{"stat /etc/passwd", "stat -c %s /etc/shadow", "readlink /proc/self", "stat /home", "du -s /etc", "realpath -e /etc/hosts", "file /etc/passwd"} {
+	for _, cmd := range []string{"stat /etc/passwd", "stat -c %s /etc/shadow", "readlink /proc/self", "stat /usr", "du -s /etc", "realpath -e /etc/hosts", "file /etc/passwd"} {
 		out, code := e.run(cmd)
 		if code == 0 && !strings.Contains(out, "No such file") && !strings.Contains(out, "cannot open") {
 			t.Errorf("%s: exit %d, output %q", cmd, code, out)
