@@ -1,0 +1,23 @@
+schema: spec-driven
+
+context: |
+  dirmcp is a Go MCP server that gives remote AI clients shell-like access to
+  one directory: allowlisted real Unix tools with allowlisted flags, confined
+  per command (directory only, no network), bearer-token auth over
+  Streamable HTTP. It is security-critical: whoever has the token gets remote
+  access to the directory. Principles: avoid custom things, use standard
+  widely used tooling, understand the problem first, no fluff. Keep all
+  writing short and plain. Built and checked with a Nix flake; one VERSION
+  and CHANGELOG.md. Structural decisions are Y-statement ADRs in docs/adr/.
+
+rules:
+  tasks:
+    - Write the tests first; for security-relevant code, include tests that try to break it
+    - Commit after each task (Conventional Commits) and push
+    - Include a task to update README.md and CONTRIBUTING.md if the change affects them
+    - Include a task to refine the CHANGELOG.md text (the version is set at propose time, see CONTRIBUTING "Versions")
+    - If the design makes a structural decision, include a task to add an ADR in docs/adr/
+    - End with a task to run `nix flake check` and `scripts/check-release.sh --base origin/main` locally, then update the PR description
+  design:
+    - Start with a "Recon" section - current docs and versions of every tool the change uses, with sources, checked now (not from memory)
+    - Include a "Threat model" section for anything that touches tools, arguments, paths, auth or confinement

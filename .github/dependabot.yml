@@ -1,0 +1,14 @@
+# Weekly update PRs for the pinned GitHub Actions. Nothing merges by itself:
+# add a version bump commit, review, merge (CONTRIBUTING, "Dependency updates").
+version: 2
+updates:
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    groups:
+      actions:
+        patterns: ["*"]
+    commit-message:
+      prefix: "ci"
+      include: "scope" # ci(deps): …
