@@ -70,8 +70,12 @@ pkgs.testers.runNixOSTest {
     def sh(port, cmd):
         return call(port, "sh", {"command": cmd})[0]
 
-    machine.wait_for_unit("dirmcp-ro.service")
-    machine.wait_for_unit("dirmcp-rw.service")
+    try:
+        machine.wait_for_unit("dirmcp-ro.service")
+        machine.wait_for_unit("dirmcp-rw.service")
+    except Exception:
+        print(machine.execute("journalctl -u dirmcp-ro -u dirmcp-rw --no-pager -o cat | tail -40")[1])
+        raise
     machine.wait_for_open_port(8091)
     machine.wait_for_open_port(8092)
 

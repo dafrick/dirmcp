@@ -15,7 +15,7 @@ The token SHALL reach the server only through `LoadCredential`, never through th
 - **THEN** the service starts and accepts that token
 
 ### Requirement: Hardened unit
-The unit SHALL apply the hardening listed in the design and keep open only what the sandbox needs: user, mount and network namespaces, `@mount` system calls, `CAP_SYS_ADMIN` and `CAP_SETPCAP` in the bounding set.
+The unit SHALL apply the hardening listed in the design and keep open only what the sandbox needs: user, mount and network namespaces, `@mount` and `@sandbox` (Landlock) system calls, `CAP_SYS_ADMIN` and `CAP_SETPCAP` in the bounding set.
 
 #### Scenario: Sandbox works under the unit
 - **WHEN** a client runs `stat /etc/passwd` and `cat a.md` through the service

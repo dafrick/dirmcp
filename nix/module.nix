@@ -110,7 +110,8 @@ let
       RestrictNamespaces = "user mnt net";
       SystemCallFilter = [
         "@system-service"
-        "@mount"
+        "@mount" # mount, pivot_root
+        "@sandbox" # landlock_*
       ];
       CapabilityBoundingSet = [
         "CAP_SYS_ADMIN"
