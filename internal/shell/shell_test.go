@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -267,4 +268,27 @@ func TestNoMetadataOutside(t *testing.T) {
 		}
 	}
 	e.ok("stat -f -c %T /", "tmpfs") // the new root, not the host's
+}
+
+// Many starts, some in parallel: the helper must never fail on its own
+// (it once ran out of address space between setting rlimits and execve).
+func TestManyStarts(t *testing.T) {
+	e := setup(t, true)
+	errs := make(chan string, 200)
+	var wg sync.WaitGroup
+	for w := 0; w < 4; w++ {
+		wg.Go(func() {
+			for i := 0; i < 50; i++ {
+				out, code := e.run("echo hi > Inbox/w.md && cat a.md | wc -l")
+				if code != 0 || strings.TrimSpace(out) != "2" {
+					errs <- fmt.Sprintf("exit %d: %.300q", code, out)
+				}
+			}
+		})
+	}
+	wg.Wait()
+	close(errs)
+	for msg := range errs {
+		t.Error(msg)
+	}
 }
