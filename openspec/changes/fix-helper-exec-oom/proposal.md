@@ -5,7 +5,8 @@ CI on `main` failed once with `runtime: out of memory` in the exec helper (#2). 
 ## What Changes
 
 - The helper prepares path, argv, env and the rlimit values first, then sets the rlimits and calls `execve` with raw syscalls, with no Go runtime work in between.
-- Test `TestManyStarts`: 200 command lines, four in parallel.
+- Test `TestManyStarts`: 400 command lines, eight in parallel.
+- From review: lock the OS thread before dropping capabilities (they are per thread), GC off and the address-space limit last, raw write and exit if a limit or `execve` fails.
 - Bump to `0.2.1`.
 
 ## Capabilities

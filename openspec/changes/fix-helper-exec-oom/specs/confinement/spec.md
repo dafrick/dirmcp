@@ -12,5 +12,5 @@ Every started program SHALL run with rlimits (CPU 60 s, address space 1 GiB, fil
 - **THEN** it is killed after 5 minutes and `more` reports it as stopped
 
 #### Scenario: Many programs
-- **WHEN** 200 command lines run, four at a time
+- **WHEN** 400 command lines run, eight at a time
 - **THEN** every program starts; the helper never fails on its own

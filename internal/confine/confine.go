@@ -28,6 +28,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"runtime/debug"
 	"syscall"
 	"unsafe"
 
@@ -58,12 +59,12 @@ var limits = []struct {
 	val uint64
 }{
 	{unix.RLIMIT_CPU, 60},          // seconds
-	{unix.RLIMIT_AS, 1 << 30},      // 1 GiB address space
 	{unix.RLIMIT_FSIZE, 100 << 20}, // 100 MiB per written file
 	{unix.RLIMIT_NOFILE, 256},      // open files
 	{unix.RLIMIT_CORE, 0},          // no core dumps
 	{unix.RLIMIT_MEMLOCK, 0},       // no locked memory
 	{unix.RLIMIT_MSGQUEUE, 0},      // no POSIX message queues
+	{unix.RLIMIT_AS, 1 << 30},      // 1 GiB address space; last, see limitAndExec
 }
 
 const (
@@ -239,6 +240,9 @@ func RunHelper(args []string) {
 }
 
 func helper(args []string) error {
+	// Capabilities and securebits are per thread: everything from dropping
+	// them to execve must happen on one OS thread. Never unlocked.
+	runtime.LockOSThread()
 	if len(args) < 3 || args[1] != "--" {
 		return errors.New("usage: __exec <spec> -- <path> [args...]")
 	}
@@ -294,16 +298,27 @@ func limitAndExec(argv, env []string) error {
 	for i, l := range limits {
 		rl[i] = unix.Rlimit{Cur: l.val, Max: l.val}
 	}
-	runtime.LockOSThread()
+	limitErr := []byte("dirmcp: cannot set resource limits\n")
+	execErr := []byte("dirmcp: cannot start " + argv[0] + "\n")
+	// No collection (and no GC worker allocations) from here on.
+	runtime.GC()
+	debug.SetGCPercent(-1)
 	for i, l := range limits {
 		if _, _, e := unix.RawSyscall6(unix.SYS_PRLIMIT64, 0, uintptr(l.res), uintptr(unsafe.Pointer(&rl[i])), 0, 0, 0); e != 0 {
-			os.Exit(125) // cannot report: printing could allocate
+			rawFail(limitErr, 125) // never exec with only some limits
 		}
 	}
-	_, _, e := unix.RawSyscall(unix.SYS_EXECVE, uintptr(unsafe.Pointer(path)),
+	unix.RawSyscall(unix.SYS_EXECVE, uintptr(unsafe.Pointer(path)),
 		uintptr(unsafe.Pointer(&argvp[0])), uintptr(unsafe.Pointer(&envp[0])))
-	runtime.KeepAlive(rl)
-	return fmt.Errorf("execve %s: %w", argv[0], e)
+	rawFail(execErr, 126) // execve returned: it failed
+	return nil
+}
+
+// rawFail writes msg to stderr and exits, with raw syscalls only (anything
+// else could need memory the address-space limit no longer allows).
+func rawFail(msg []byte, code int) {
+	unix.RawSyscall(unix.SYS_WRITE, 2, uintptr(unsafe.Pointer(&msg[0])), uintptr(len(msg)))
+	unix.RawSyscall(unix.SYS_EXIT_GROUP, uintptr(code), 0, 0)
 }
 
 // CheckKernel runs self with SelfTestArg in the same namespaces as a real
@@ -336,6 +351,7 @@ func CheckKernel(self string) error {
 func SelfTest(base string) error {
 	s := Spec{Root: filepath.Join(base, "root"), Writable: true, Tmp: filepath.Join(base, "tmp"),
 		Stage: filepath.Join(base, "stage"), Exec: []string{"/nix/store"}}
+	runtime.LockOSThread() // see helper
 	if err := isolate(s); err != nil {
 		return err
 	}

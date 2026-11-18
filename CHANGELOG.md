@@ -6,7 +6,8 @@ All notable changes are listed here. Format: [Keep a Changelog](https://keepacha
 
 ### Fixed
 
-- The exec helper could fail with "out of memory" between setting the address-space limit and starting the program; it now uses raw syscalls there.
+- The exec helper could fail with "out of memory" between setting the address-space limit and starting the program; it now uses raw syscalls there, with the GC off and that limit set last.
+- Security: the helper drops capabilities on a locked OS thread. Before, Go could move it to another thread before `execve`, so a program could start with all capabilities inside its user namespace (still confined by Landlock and the mount namespace).
 
 ## [0.2.0] - 2026-11-18
 
