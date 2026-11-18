@@ -135,6 +135,10 @@
     {
       formatter = forAllSystems (pkgs: pkgs.nixfmt);
 
+      nixosModules.default = import ./nix/module.nix {
+        packageFor = pkgs: self.packages.${pkgs.stdenv.hostPlatform.system}.default;
+      };
+
       packages = forLinux (pkgs: {
         default = package pkgs;
         tools-manifest = toolsManifest pkgs;
@@ -142,10 +146,20 @@
 
       checks =
         nixpkgs.lib.recursiveUpdate
-          (forLinux (pkgs: {
-            # go test runs in the package build (preCheck sets DIRMCP_TOOLS).
-            package = package pkgs;
-          }))
+          (forLinux (
+            pkgs:
+            {
+              # go test runs in the package build (preCheck sets DIRMCP_TOOLS).
+              package = package pkgs;
+            }
+            # NixOS VM test of the module (x86_64 only: CI and the owner's hosts).
+            // nixpkgs.lib.optionalAttrs (pkgs.stdenv.hostPlatform.system == "x86_64-linux") {
+              vm = import ./nix/test.nix {
+                inherit pkgs;
+                module = self.nixosModules.default;
+              };
+            }
+          ))
           (
             forAllSystems (pkgs: {
               hooks = git-hooks.lib.${pkgs.stdenv.hostPlatform.system}.run {
@@ -186,7 +200,9 @@
         default = pkgs.mkShell {
           inherit (self.checks.${pkgs.stdenv.hostPlatform.system}.hooks) shellHook;
           # Tests and `go generate` use the packaged tools (Linux only).
-          env = nixpkgs.lib.optionalAttrs pkgs.stdenv.isLinux { DIRMCP_TOOLS = toolsManifest pkgs; };
+          env = nixpkgs.lib.optionalAttrs pkgs.stdenv.hostPlatform.isLinux {
+            DIRMCP_TOOLS = toolsManifest pkgs;
+          };
           packages = self.checks.${pkgs.stdenv.hostPlatform.system}.hooks.enabledPackages ++ [
             pkgs.go
             pkgs.gopls
