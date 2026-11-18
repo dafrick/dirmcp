@@ -16,9 +16,17 @@ pkgs.testers.runNixOSTest {
       "/srv/ro/Inbox".d = {
         mode = "0777";
       };
+      # 0666: only the sandbox (not file permissions) can stop writes here.
       "/srv/ro/a.md".f = {
-        mode = "0644";
+        mode = "0666";
         argument = "alpha";
+      };
+      "/home/someone".d = {
+        mode = "0755";
+      };
+      "/home/someone/secret.md".f = {
+        mode = "0644";
+        argument = "home secret";
       };
       "/srv/rw".d = {
         mode = "0777";
@@ -94,7 +102,12 @@ pkgs.testers.runNixOSTest {
         assert "No such file" in out, out
         out = sh(8091, "echo x > a.md")
         assert "read-only" in out, out
+        # Writes by programs: stopped by Landlock and the unit, not by DAC.
+        for cmd in ["sed -i s/alpha/omega/ a.md", "touch new.md", "cp a.md copy.md", "mkdir d", "mv a.md b.md"]:
+            out = sh(8091, cmd)
+            assert "[exit status 0]" not in out, (cmd, out)
         machine.succeed("grep -qx alpha /srv/ro/a.md")
+        machine.fail("test -e /srv/ro/new.md -o -e /srv/ro/copy.md -o -e /srv/ro/d -o -e /srv/ro/b.md")
         text, err = call(8091, "create", {"path": "Inbox/new.md", "content": "hello"})
         assert not err, text
         text, err = call(8091, "create", {"path": "Inbox/new.md", "content": "again"})
@@ -111,8 +124,28 @@ pkgs.testers.runNixOSTest {
         machine.fail("test -e /srv/rw/b.md")
         out = sh(8092, "echo x > /etc/escape")
         assert "[exit status 0]" not in out, out
+        # Program writes outside the root, from a writable instance.
+        for cmd in ["cp b.md /srv/ro/x.md", "touch /tmp/escape", "mkdir /nix/store/escape", "cp .trash/* /srv/escape"]:
+            out = sh(8092, cmd)
+            assert "[exit status 0]" not in out, (cmd, out)
+        machine.fail("test -e /srv/ro/x.md -o -e /srv/escape -o -e /nix/store/escape")
+
+    with subtest("unit: no capabilities, no homes, no egress"):
+        pid = machine.succeed("systemctl show -p MainPID --value dirmcp-ro").strip()
+        status = machine.succeed(f"cat /proc/{pid}/status")
+        for field in ["CapEff", "CapPrm", "CapAmb"]:
+            line = [l for l in status.splitlines() if l.startswith(field)][0]
+            assert line.split()[1] == "0000000000000000", line
+        machine.succeed(f"nsenter -t {pid} -m test ! -e /home/someone/secret.md")
+        out = machine.succeed("systemctl show -p IPAddressDeny --value dirmcp-ro")
+        assert "0.0.0.0/0" in out or "any" in out, out
+        out = sh(8091, "cat /home/someone/secret.md")
+        assert "home secret" not in out, out
 
     with subtest("files created by the service are group-readable"):
         machine.succeed("stat -c %a /srv/ro/Inbox/new.md | grep -E '^6[0-7]0$'")
+
+    with subtest("never root"):
+        machine.succeed("systemctl show -p User --value dirmcp-ro | grep -qx dirmcp-ro")
   '';
 }
