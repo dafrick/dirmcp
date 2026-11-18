@@ -3,6 +3,7 @@ package server
 
 import (
 	"context"
+	"crypto/sha256"
 	"crypto/subtle"
 	"fmt"
 	"log/slog"
@@ -108,7 +109,9 @@ var failures = struct {
 
 func verifier(c Config) auth.TokenVerifier {
 	return func(ctx context.Context, token string, r *http.Request) (*auth.TokenInfo, error) {
-		if subtle.ConstantTimeCompare([]byte(token), c.Token) == 1 {
+		// Compare hashes: equal length, so the token's length does not leak.
+		got, want := sha256.Sum256([]byte(token)), sha256.Sum256(c.Token)
+		if subtle.ConstantTimeCompare(got[:], want[:]) == 1 {
 			return &auth.TokenInfo{}, nil
 		}
 		host := r.RemoteAddr
