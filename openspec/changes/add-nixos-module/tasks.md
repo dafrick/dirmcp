@@ -14,5 +14,5 @@
 
 ## 4. Review and close
 
-- [ ] 4.1 Independent security review of the diff, posted on the PR; fix findings
-- [ ] 4.2 Archive, update the PR description
+- [x] 4.1 Independent security review of the diff, posted on the PR; fix findings
+- [x] 4.2 Archive, update the PR description
