@@ -27,7 +27,9 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"syscall"
+	"unsafe"
 
 	"github.com/landlock-lsm/go-landlock/landlock"
 	ll "github.com/landlock-lsm/go-landlock/landlock/syscall"
@@ -258,13 +260,6 @@ func helper(args []string) error {
 	if err := abi.Restrict(rules(s)...); err != nil {
 		return fmt.Errorf("landlock: %w", err)
 	}
-	// Limits last: the Go runtime of this helper needs more address space
-	// than the program gets.
-	for _, l := range limits {
-		if err := unix.Setrlimit(l.res, &unix.Rlimit{Cur: l.val, Max: l.val}); err != nil {
-			return fmt.Errorf("rlimit %d: %w", l.res, err)
-		}
-	}
 	env := []string{
 		"LC_ALL=C.UTF-8",
 		"HOME=" + s.Root,
@@ -273,7 +268,42 @@ func helper(args []string) error {
 	if s.Tmp != "" {
 		env = append(env, "TMPDIR="+s.Tmp)
 	}
-	return syscall.Exec(argv[0], argv, env)
+	return limitAndExec(argv, env)
+}
+
+// limitAndExec sets the rlimits and execs, with raw syscalls only. Once the
+// address-space limit is set, any allocation by the Go runtime (a new thread,
+// heap growth, syscall.Exec's own work) can fail with "out of memory",
+// because the runtime has already reserved more than the program may use.
+// So everything is prepared first, and nothing between the first prlimit and
+// execve touches the runtime.
+func limitAndExec(argv, env []string) error {
+	path, err := unix.BytePtrFromString(argv[0])
+	if err != nil {
+		return err
+	}
+	argvp, err := syscall.SlicePtrFromStrings(argv)
+	if err != nil {
+		return err
+	}
+	envp, err := syscall.SlicePtrFromStrings(env)
+	if err != nil {
+		return err
+	}
+	rl := make([]unix.Rlimit, len(limits))
+	for i, l := range limits {
+		rl[i] = unix.Rlimit{Cur: l.val, Max: l.val}
+	}
+	runtime.LockOSThread()
+	for i, l := range limits {
+		if _, _, e := unix.RawSyscall6(unix.SYS_PRLIMIT64, 0, uintptr(l.res), uintptr(unsafe.Pointer(&rl[i])), 0, 0, 0); e != 0 {
+			os.Exit(125) // cannot report: printing could allocate
+		}
+	}
+	_, _, e := unix.RawSyscall(unix.SYS_EXECVE, uintptr(unsafe.Pointer(path)),
+		uintptr(unsafe.Pointer(&argvp[0])), uintptr(unsafe.Pointer(&envp[0])))
+	runtime.KeepAlive(rl)
+	return fmt.Errorf("execve %s: %w", argv[0], e)
 }
 
 // CheckKernel runs self with SelfTestArg in the same namespaces as a real
