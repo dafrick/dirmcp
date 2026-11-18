@@ -32,4 +32,17 @@ func TestReadToken(t *testing.T) {
 			t.Errorf("%s: accepted", name)
 		}
 	}
+
+	// systemd credentials: 0440 is fine inside $CREDENTIALS_DIRECTORY only.
+	cred := write("cred", "0123456789abcdef0123456789abcdef", 0o440)
+	if _, err := readToken(cred); err == nil {
+		t.Errorf("0440 outside the credentials dir: accepted")
+	}
+	t.Setenv("CREDENTIALS_DIRECTORY", dir)
+	if _, err := readToken(cred); err != nil {
+		t.Errorf("0440 credential: %v", err)
+	}
+	if _, err := readToken(write("cred-world", "0123456789abcdef0123456789abcdef", 0o444)); err == nil {
+		t.Errorf("0444 credential: accepted")
+	}
 }

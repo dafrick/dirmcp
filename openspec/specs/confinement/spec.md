@@ -28,7 +28,7 @@ Every started program SHALL run under Landlock rules applied before `execve`: re
 - **THEN** the kernel denies it
 
 ### Requirement: Resource limits
-Every started program SHALL run with rlimits (CPU 60 s, address space 1 GiB, file size 100 MiB, 256 open files, no core dumps) and SHALL be killed with its process group after 5 minutes. The number of processes is limited by the service unit.
+Every started program SHALL run with rlimits (CPU 60 s, address space 4 GiB, file size 100 MiB, 256 open files, no core dumps) and SHALL be killed with its process group after 5 minutes. Memory and the number of processes are capped by the service unit (`MemoryMax`, `TasksMax`); the address-space limit only stops runaway programs and leaves the helper's Go runtime headroom until `execve`.
 
 #### Scenario: Huge file
 - **WHEN** a writable server runs `head -c 200000000 /dev/zero > big`
@@ -39,5 +39,5 @@ Every started program SHALL run with rlimits (CPU 60 s, address space 1 GiB, fil
 - **THEN** it is killed after 5 minutes and `more` reports it as stopped
 
 #### Scenario: Many programs
-- **WHEN** 400 command lines run, eight at a time
+- **WHEN** 400 command lines run, four at a time (the server maximum)
 - **THEN** every program starts; the helper never fails on its own
