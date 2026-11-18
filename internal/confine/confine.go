@@ -104,14 +104,16 @@ func helper(args []string) error {
 		return errors.New("bad spec: root and exec are required")
 	}
 	argv := args[2:]
+	// Not BestEffort: refuse to run if the kernel cannot enforce all of it.
+	if err := abi.Restrict(rules(s)...); err != nil {
+		return fmt.Errorf("landlock: %w", err)
+	}
+	// Limits last: the Go runtime of this helper needs more address space
+	// than the program gets.
 	for _, l := range limits {
 		if err := unix.Setrlimit(l.res, &unix.Rlimit{Cur: l.val, Max: l.val}); err != nil {
 			return fmt.Errorf("rlimit %d: %w", l.res, err)
 		}
-	}
-	// Not BestEffort: refuse to run if the kernel cannot enforce all of it.
-	if err := abi.Restrict(rules(s)...); err != nil {
-		return fmt.Errorf("landlock: %w", err)
 	}
 	env := []string{
 		"LC_ALL=C.UTF-8",
