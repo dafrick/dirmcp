@@ -74,7 +74,7 @@ pkgs.testers.runNixOSTest {
         machine.wait_for_unit("dirmcp-ro.service")
         machine.wait_for_unit("dirmcp-rw.service")
     except Exception:
-        print(machine.execute("journalctl -u dirmcp-ro -u dirmcp-rw --no-pager -o cat | tail -40")[1])
+        print(machine.execute("journalctl -u dirmcp-ro --no-pager -o cat | grep -v -E 'service:|Start|Failed|Scheduled' | sort -u | head -20")[1])
         raise
     machine.wait_for_open_port(8091)
     machine.wait_for_open_port(8092)
