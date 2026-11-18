@@ -39,7 +39,10 @@ func main() {
 		case confine.HelperArg:
 			confine.RunHelper(os.Args[2:])
 		case confine.SelfTestArg:
-			if err := confine.SelfTest(); err != nil {
+			if len(os.Args) < 3 {
+				os.Exit(2)
+			}
+			if err := confine.SelfTest(os.Args[2]); err != nil {
 				fmt.Fprintln(os.Stderr, err)
 				os.Exit(1)
 			}
@@ -113,7 +116,12 @@ func run() error {
 		Version:  version,
 		Log:      log,
 	})
-	srv := &http.Server{Addr: *listen, Handler: h, ReadHeaderTimeout: 10 * time.Second, IdleTimeout: 120 * time.Second}
+	srv := &http.Server{Addr: *listen, Handler: h,
+		ReadHeaderTimeout: 10 * time.Second,
+		ReadTimeout:       30 * time.Second, // whole request, incl. the body
+		WriteTimeout:      60 * time.Second, // answers wait at most 15 s
+		IdleTimeout:       120 * time.Second,
+	}
 	errc := make(chan error, 1)
 	go func() { errc <- srv.ListenAndServe() }()
 	log.Info("serving", "root", dir, "listen", *listen, "writable", *writable, "create_in", createIn.String(), "version", version)

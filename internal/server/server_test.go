@@ -22,7 +22,7 @@ func TestMain(m *testing.M) {
 		confine.RunHelper(os.Args[2:])
 	}
 	if len(os.Args) > 1 && os.Args[1] == confine.SelfTestArg {
-		if confine.SelfTest() != nil {
+		if confine.SelfTest(os.Args[2]) != nil {
 			os.Exit(1)
 		}
 		os.Exit(0)
@@ -102,7 +102,7 @@ func TestTools(t *testing.T) {
 	}
 	self, _ := os.Executable()
 	if err := confine.CheckKernel(self); err != nil {
-		if os.Getenv("DIRMCP_REQUIRE_LANDLOCK") != "" {
+		if os.Getenv("DIRMCP_REQUIRE_SANDBOX") != "" {
 			t.Fatal(err)
 		}
 		t.Skip(err)

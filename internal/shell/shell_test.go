@@ -20,7 +20,7 @@ func TestMain(m *testing.M) {
 		confine.RunHelper(os.Args[2:])
 	}
 	if len(os.Args) > 1 && os.Args[1] == confine.SelfTestArg {
-		if err := confine.SelfTest(); err != nil {
+		if err := confine.SelfTest(os.Args[2]); err != nil {
 			os.Exit(1)
 		}
 		os.Exit(0)
@@ -50,7 +50,7 @@ func setup(t *testing.T, writable bool) *env {
 	self, err := os.Executable()
 	must(t, err)
 	if err := confine.CheckKernel(self); err != nil {
-		if os.Getenv("DIRMCP_REQUIRE_LANDLOCK") != "" {
+		if os.Getenv("DIRMCP_REQUIRE_SANDBOX") != "" {
 			t.Fatal(err)
 		}
 		t.Skip(err)
@@ -204,11 +204,11 @@ func TestStopped(t *testing.T) {
 	}
 }
 
-// A program under the helper cannot open TCP connections or run binaries
-// outside the tools' closure. The test binary plays the program, so its own
-// directory is added to the allowed executables.
 var raceBuild bool
 
+// A program under the helper cannot open TCP connections or run binaries
+// outside the tools' closure. The test binary plays the program; Bind makes
+// it visible inside the new root.
 func TestNoNetworkNoForeignExec(t *testing.T) {
 	if raceBuild {
 		t.Skip("race build")
@@ -218,23 +218,39 @@ func TestNoNetworkNoForeignExec(t *testing.T) {
 	must(t, err)
 	defer ln.Close()
 	self := e.cfg.Self
-	spec := func(exec []string) string {
-		return `{"root":"` + e.root + `","exec":["` + strings.Join(exec, `","`) + `"]}`
-	}
-	run := func(exec []string, args ...string) int {
-		c := mustCmd(self, append([]string{confine.HelperArg, spec(exec), "--", self}, args...)...)
-		err := c.Run()
-		if err == nil {
-			return 0
+	run := func(execPaths, bind []string) int {
+		base := t.TempDir()
+		os.Mkdir(filepath.Join(base, "stage"), 0o700)
+		c, err := confine.Command(self, confine.Spec{Root: e.root, Stage: filepath.Join(base, "stage"), Exec: execPaths, Bind: bind},
+			self, "__dial", ln.Addr().String())
+		must(t, err)
+		if err := c.Run(); err != nil {
+			return c.ProcessState.ExitCode()
 		}
-		return c.ProcessState.ExitCode()
+		return 0
 	}
+	dir := []string{filepath.Dir(self)}
 	// Allowed to exec itself, but dialing must fail (exit 3).
-	if code := run(append(e.cfg.Tools.Paths, filepath.Dir(self)), "__dial", ln.Addr().String()); code != 3 {
-		t.Errorf("dial under Landlock: exit %d, want 3 (connection refused by Landlock)", code)
+	if code := run(append(e.cfg.Tools.Paths, dir...), dir); code != 3 {
+		t.Errorf("dial in the sandbox: exit %d, want 3", code)
 	}
-	// Not in the allowed executables: execve fails in the helper (exit 126).
-	if code := run(e.cfg.Tools.Paths, "__dial", ln.Addr().String()); code != 126 {
+	// Visible but not in the allowed executables: execve fails (exit 126).
+	if code := run(e.cfg.Tools.Paths, dir); code != 126 {
 		t.Errorf("exec outside closure: exit %d, want 126", code)
 	}
+}
+
+// Paths outside the root do not exist for programs, not even for stat.
+func TestNoMetadataOutside(t *testing.T) {
+	e := setup(t, false)
+	for _, cmd := range []string{"stat /etc/passwd", "stat -c %s /etc/shadow", "readlink /proc/self", "stat /home", "du -s /etc", "realpath -e /etc/hosts", "file /etc/passwd"} {
+		out, code := e.run(cmd)
+		if code == 0 && !strings.Contains(out, "No such file") && !strings.Contains(out, "cannot open") {
+			t.Errorf("%s: exit %d, output %q", cmd, code, out)
+		}
+		if strings.Contains(out, "root") && strings.Contains(cmd, "passwd") && strings.Contains(out, ":") && !strings.Contains(out, "No such") {
+			t.Errorf("%s leaked: %q", cmd, out)
+		}
+	}
+	e.ok("stat -f -c %T /", "tmpfs") // the new root, not the host's
 }

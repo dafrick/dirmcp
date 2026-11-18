@@ -11,7 +11,6 @@ package shell
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -55,10 +54,10 @@ var blocked = map[string]string{
 	"logout": "not a login shell",
 }
 
-// Run interprets command in dir (inside the root) and writes stdout and
-// stderr to out. It returns the exit status. tmp is a private scratch
-// directory for the started programs.
-func Run(ctx context.Context, c *Config, command, tmp string, w io.Writer) (int, error) {
+// Run interprets command in the root and writes stdout and stderr to w. It
+// returns the exit status. scratch is an empty private directory for this
+// command line; the caller removes it afterwards.
+func Run(ctx context.Context, c *Config, command, scratch string, w io.Writer) (int, error) {
 	// Both sides of a pipeline write stderr here from different goroutines.
 	out := &lockedWriter{w: w}
 	file, err := syntax.NewParser().Parse(strings.NewReader(command), "")
@@ -71,7 +70,12 @@ func Run(ctx context.Context, c *Config, command, tmp string, w io.Writer) (int,
 		return 0, err
 	}
 	defer root.Close()
-	f := &fsys{c: c, root: root, tmp: tmp}
+	f := &fsys{c: c, root: root, tmp: filepath.Join(scratch, "tmp"), stage: filepath.Join(scratch, "stage")}
+	for _, d := range []string{f.tmp, f.stage} {
+		if err := os.Mkdir(d, 0o700); err != nil {
+			return 0, err
+		}
+	}
 	r, err := interp.New(
 		interp.Dir(c.Root),
 		interp.Env(expand.ListEnviron("HOME="+c.Root, "LC_ALL=C.UTF-8")),
@@ -113,9 +117,10 @@ func (l *lockedWriter) Write(p []byte) (int, error) {
 }
 
 type fsys struct {
-	c    *Config
-	root *os.Root
-	tmp  string
+	c     *Config
+	root  *os.Root
+	tmp   string // scratch for the programs (TMPDIR)
+	stage string // mount point for the programs' new root
 }
 
 // rel maps p (absolute or relative to dir) to a path relative to the root.
@@ -204,15 +209,16 @@ func (f *fsys) exec(ctx context.Context, args []string) error {
 		fmt.Fprintf(hc.Stderr, "%v\n", err)
 		return interp.ExitStatus(2)
 	}
-	spec, _ := json.Marshal(confine.Spec{Root: f.c.Root, Writable: f.c.Writable, Tmp: f.tmp, Exec: f.c.Tools.Paths})
-	cmd := exec.Command(f.c.Self, append([]string{confine.HelperArg, string(spec), "--", path}, full...)...)
+	cmd, err := confine.Command(f.c.Self, confine.Spec{Root: f.c.Root, Writable: f.c.Writable,
+		Tmp: f.tmp, Stage: f.stage, Exec: f.c.Tools.Paths}, path, full...)
+	if err != nil {
+		return err
+	}
 	cmd.Dir = hc.Dir
-	cmd.Env = []string{}
 	if file, ok := hc.Stdin.(*os.File); ok && file != nil {
 		cmd.Stdin = file
 	}
 	cmd.Stdout, cmd.Stderr = hc.Stdout, hc.Stderr
-	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true, Pdeathsig: syscall.SIGKILL}
 	if err := cmd.Start(); err != nil {
 		fmt.Fprintf(hc.Stderr, "%s: %v\n", name, err)
 		return interp.ExitStatus(126)

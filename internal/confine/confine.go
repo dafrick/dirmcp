@@ -1,12 +1,22 @@
-// Package confine starts one allowlisted program under Landlock and rlimits.
+// Package confine starts one allowlisted program, isolated from the rest of
+// the machine.
 //
-// The server never execs a tool directly. It re-executes its own binary as
+// The server never execs a tool directly. It starts its own binary as
 //
 //	dirmcp __exec <spec-json> -- <program path> <args...>
 //
-// and that helper process sets rlimits, applies Landlock to itself, then
-// replaces itself with the program (execve). Landlock rules are inherited
-// across execve and cannot be lifted.
+// in new user, mount and network namespaces (see Command). That helper
+//
+//  1. builds a new root that holds only the served directory, the Nix store,
+//     the job's scratch directory and /dev/null, /dev/zero, /dev/urandom, and
+//     pivots into it: nothing else (no /etc, /home, /proc) exists by path,
+//     not even for stat or readlink;
+//  2. applies Landlock: read the root and the tools' closure, write only if
+//     allowed, execute only the closure, no TCP, scoped IPC;
+//  3. sets rlimits;
+//  4. replaces itself with the program (execve). Namespaces, Landlock and
+//     rlimits are inherited and cannot be lifted; capabilities in the user
+//     namespace are dropped by execve (the uid is not 0).
 package confine
 
 import (
@@ -16,6 +26,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"syscall"
 
 	"github.com/landlock-lsm/go-landlock/landlock"
@@ -31,10 +42,12 @@ const SelfTestArg = "__selftest"
 
 // Spec describes what the started program may access.
 type Spec struct {
-	Root     string   `json:"root"`     // served directory
-	Writable bool     `json:"writable"` // may the program change files under Root
-	Tmp      string   `json:"tmp"`      // private scratch dir (read-write), may be empty
-	Exec     []string `json:"exec"`     // store paths: readable and executable
+	Root     string   `json:"root"`           // served directory
+	Writable bool     `json:"writable"`       // may the program change files under Root
+	Tmp      string   `json:"tmp"`            // private scratch dir (read-write), may be empty
+	Stage    string   `json:"stage"`          // empty dir, becomes the new root
+	Exec     []string `json:"exec"`           // store paths: readable and executable
+	Bind     []string `json:"bind,omitempty"` // tests only: extra read-only paths
 }
 
 // Limits for every started program. Wall time is enforced by the caller.
@@ -63,6 +76,34 @@ const (
 // refer, TCP rules (4), ioctl on devices (5), IPC scoping (6).
 var abi = landlock.V6
 
+var devices = []string{"/dev/null", "/dev/zero", "/dev/urandom"}
+
+// Command returns the command that runs program with args under spec.
+// self is the dirmcp binary.
+func Command(self string, s Spec, program string, args ...string) (*exec.Cmd, error) {
+	b, err := json.Marshal(s)
+	if err != nil {
+		return nil, err
+	}
+	cmd := exec.Command(self, append([]string{HelperArg, string(b), "--", program}, args...)...)
+	cmd.Env = []string{}
+	cmd.SysProcAttr = attr()
+	return cmd, nil
+}
+
+// attr: new user (mapped to our own uid and gid), mount and network
+// namespaces, own process group, killed if the server dies.
+func attr() *syscall.SysProcAttr {
+	uid, gid := os.Getuid(), os.Getgid()
+	return &syscall.SysProcAttr{
+		Cloneflags:  syscall.CLONE_NEWUSER | syscall.CLONE_NEWNS | syscall.CLONE_NEWNET,
+		UidMappings: []syscall.SysProcIDMap{{ContainerID: uid, HostID: uid, Size: 1}},
+		GidMappings: []syscall.SysProcIDMap{{ContainerID: gid, HostID: gid, Size: 1}},
+		Setpgid:     true,
+		Pdeathsig:   syscall.SIGKILL,
+	}
+}
+
 // rules returns the Landlock rules for spec.
 func rules(s Spec) []landlock.Rule {
 	root := landlock.AccessFSSet(rootRead)
@@ -71,9 +112,9 @@ func rules(s Spec) []landlock.Rule {
 	}
 	r := []landlock.Rule{
 		landlock.PathAccess(root, s.Root),
-		landlock.PathAccess(storeAccess, s.Exec...),
-		landlock.PathAccess(devAccess, "/dev/null").IgnoreIfMissing(),
-		landlock.PathAccess(ll.AccessFSReadFile, "/dev/zero", "/dev/urandom").IgnoreIfMissing(),
+		landlock.PathAccess(storeAccess, append(append([]string{}, s.Exec...), s.Bind...)...),
+		landlock.PathAccess(devAccess, "/dev/null"),
+		landlock.PathAccess(ll.AccessFSReadFile, "/dev/zero", "/dev/urandom"),
 	}
 	if s.Tmp != "" {
 		r = append(r, landlock.PathAccess(rootRead|rootWrite, s.Tmp))
@@ -81,6 +122,71 @@ func rules(s Spec) []landlock.Rule {
 	// No NetRule: all TCP bind and connect is denied. Restrict also scopes
 	// abstract UNIX sockets and signals to the sandbox.
 	return r
+}
+
+// isolate builds the new root in s.Stage and pivots into it. It must run in
+// the helper, inside the namespaces from attr.
+func isolate(s Spec) error {
+	cwd, err := os.Getwd()
+	if err != nil {
+		return err
+	}
+	// Nothing we mount here may reach the host's mount table.
+	if err := unix.Mount("", "/", "", unix.MS_REC|unix.MS_PRIVATE, ""); err != nil {
+		return fmt.Errorf("make mounts private: %w", err)
+	}
+	if err := unix.Mount("tmpfs", s.Stage, "tmpfs", unix.MS_NOSUID|unix.MS_NODEV, "mode=0755,size=1m"); err != nil {
+		return fmt.Errorf("mount new root: %w", err)
+	}
+	bind := func(src string) error {
+		st, err := os.Stat(src)
+		if err != nil {
+			return err
+		}
+		dst := filepath.Join(s.Stage, src)
+		if st.IsDir() {
+			err = os.MkdirAll(dst, 0o755)
+		} else if err = os.MkdirAll(filepath.Dir(dst), 0o755); err == nil {
+			err = os.WriteFile(dst, nil, 0o644)
+		}
+		if err != nil {
+			return err
+		}
+		if err := unix.Mount(src, dst, "", unix.MS_BIND|unix.MS_REC, ""); err != nil {
+			return fmt.Errorf("bind %s: %w", src, err)
+		}
+		return nil
+	}
+	paths := append([]string{s.Root, "/nix/store"}, devices...)
+	if s.Tmp != "" {
+		paths = append(paths, s.Tmp)
+	}
+	for _, p := range append(paths, s.Bind...) {
+		if err := bind(p); err != nil {
+			return err
+		}
+	}
+	old := filepath.Join(s.Stage, ".old")
+	if err := os.Mkdir(old, 0o700); err != nil {
+		return err
+	}
+	if err := unix.PivotRoot(s.Stage, old); err != nil {
+		return fmt.Errorf("pivot_root: %w", err)
+	}
+	if err := unix.Chdir("/"); err != nil {
+		return err
+	}
+	if err := unix.Unmount("/.old", unix.MNT_DETACH); err != nil {
+		return fmt.Errorf("detach old root: %w", err)
+	}
+	if err := os.Remove("/.old"); err != nil {
+		return err
+	}
+	// The new root itself (our tmpfs) becomes read-only.
+	if err := unix.Mount("", "/", "", unix.MS_REMOUNT|unix.MS_BIND|unix.MS_RDONLY|unix.MS_NOSUID|unix.MS_NODEV, ""); err != nil {
+		return fmt.Errorf("remount new root read-only: %w", err)
+	}
+	return unix.Chdir(cwd)
 }
 
 // RunHelper is the helper's main. It never returns on success.
@@ -100,10 +206,13 @@ func helper(args []string) error {
 	if err := json.Unmarshal([]byte(args[0]), &s); err != nil {
 		return fmt.Errorf("bad spec: %w", err)
 	}
-	if s.Root == "" || len(s.Exec) == 0 {
-		return errors.New("bad spec: root and exec are required")
+	if s.Root == "" || s.Stage == "" || len(s.Exec) == 0 {
+		return errors.New("bad spec: root, stage and exec are required")
 	}
 	argv := args[2:]
+	if err := isolate(s); err != nil {
+		return fmt.Errorf("isolate: %w", err)
+	}
 	// Not BestEffort: refuse to run if the kernel cannot enforce all of it.
 	if err := abi.Restrict(rules(s)...); err != nil {
 		return fmt.Errorf("landlock: %w", err)
@@ -126,24 +235,40 @@ func helper(args []string) error {
 	return syscall.Exec(argv[0], argv, env)
 }
 
-// CheckKernel runs self with SelfTestArg in a child process and reports
-// whether the kernel accepts our rules. Never call SelfTest in the server
-// process: Landlock cannot be undone.
+// CheckKernel runs self with SelfTestArg in the same namespaces as a real
+// program and reports whether isolation and Landlock work. Never call
+// SelfTest in the server process: none of it can be undone.
 func CheckKernel(self string) error {
-	out, err := exec.Command(self, SelfTestArg).CombinedOutput()
+	base, err := os.MkdirTemp("", "dirmcp-selftest-")
 	if err != nil {
-		return fmt.Errorf("Landlock ABI 6 needed: %s (%w)", bytes.TrimSpace(out), err)
+		return err
+	}
+	defer os.RemoveAll(base)
+	for _, d := range []string{"root", "tmp", "stage"} {
+		if err := os.Mkdir(filepath.Join(base, d), 0o700); err != nil {
+			return err
+		}
+	}
+	cmd := exec.Command(self, SelfTestArg, base)
+	cmd.Env = []string{}
+	cmd.SysProcAttr = attr()
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("user namespaces and Landlock ABI 6 needed: %s (%w)", bytes.TrimSpace(out), err)
 	}
 	return nil
 }
 
-// SelfTest applies the strictest rules we use to the calling process and
-// reports whether the kernel accepted them. Only for the SelfTestArg child.
-func SelfTest() error {
-	dir, err := os.MkdirTemp("", "dirmcp-selftest-")
-	if err != nil {
+// SelfTest isolates and restricts the calling process like the helper does.
+// Only for the SelfTestArg child; base comes from CheckKernel.
+func SelfTest(base string) error {
+	s := Spec{Root: filepath.Join(base, "root"), Writable: true, Tmp: filepath.Join(base, "tmp"),
+		Stage: filepath.Join(base, "stage"), Exec: []string{"/nix/store"}}
+	if err := isolate(s); err != nil {
 		return err
 	}
-	defer os.RemoveAll(dir)
-	return abi.Restrict(rules(Spec{Root: dir, Writable: true, Tmp: dir, Exec: []string{dir}})...)
+	if _, err := os.Stat("/etc"); !errors.Is(err, os.ErrNotExist) {
+		return fmt.Errorf("/etc is still visible after isolation (%v)", err)
+	}
+	return abi.Restrict(rules(s)...)
 }
