@@ -141,13 +141,15 @@ func readToken(path string) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	// systemd credentials are 0440 inside a directory only the service user
-	// can enter; group read is fine there. Never readable by others.
+	// systemd credentials are 0440 (root-owned) inside a directory only the
+	// service user can enter; group read is fine there. Never readable by
+	// others, never owned by another unprivileged user.
 	loose := st.Mode().Perm() & 0o077
 	if inCredentials(path) {
 		loose = st.Mode().Perm() & 0o007
-		if sys, ok := st.Sys().(*syscall.Stat_t); ok && int(sys.Uid) != os.Getuid() {
-			return nil, fmt.Errorf("token file %s is not owned by this user", path)
+		// systemd owns credentials as root; the directory is the service's.
+		if sys, ok := st.Sys().(*syscall.Stat_t); ok && sys.Uid != 0 && int(sys.Uid) != os.Getuid() {
+			return nil, fmt.Errorf("token file %s is owned by another user", path)
 		}
 	}
 	if loose != 0 {
