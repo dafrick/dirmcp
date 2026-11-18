@@ -8,6 +8,10 @@ All notable changes are listed here. Format: [Keep a Changelog](https://keepacha
 
 - NixOS module `services.dirmcp.instances.<name>`: one hardened systemd service per served directory, own system user, token through systemd credentials, `MemoryMax`/`TasksMax`. NixOS VM test (`checks.x86_64-linux.vm`).
 - The server accepts 0440 token files inside `$CREDENTIALS_DIRECTORY` (systemd credentials).
+
+### Changed
+
+- Address-space limit per program 1 GiB → 4 GiB: at 1 GiB a Go runtime thread of the helper could still fail to allocate just before `execve`. Memory is capped by the unit's `MemoryMax`.
 - README: "Deploying securely".
 
 ## [0.2.1] - 2026-11-18

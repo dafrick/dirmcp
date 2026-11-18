@@ -64,7 +64,7 @@ var limits = []struct {
 	{unix.RLIMIT_CORE, 0},          // no core dumps
 	{unix.RLIMIT_MEMLOCK, 0},       // no locked memory
 	{unix.RLIMIT_MSGQUEUE, 0},      // no POSIX message queues
-	{unix.RLIMIT_AS, 1 << 30},      // 1 GiB address space; last, see limitAndExec
+	{unix.RLIMIT_AS, 4 << 30},      // 4 GiB address space (headroom for the helper's Go runtime; memory itself is capped by the unit); last, see limitAndExec
 }
 
 const (
