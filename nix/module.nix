@@ -5,6 +5,7 @@
   config,
   lib,
   pkgs,
+  utils,
   ...
 }:
 let
@@ -17,8 +18,12 @@ let
     {
       options = {
         root = mkOption {
-          type = types.path;
-          description = "Directory to serve.";
+          # Not types.path: a path literal would be copied into the store.
+          type = types.pathWith {
+            inStore = false;
+            absolute = true;
+          };
+          description = "Directory to serve (absolute, not in the Nix store).";
         };
         listen = mkOption {
           type = types.str;
@@ -26,7 +31,10 @@ let
           description = "Address of the MCP endpoint (`/mcp`). Keep it on loopback and put an HTTPS proxy in front.";
         };
         tokenFile = mkOption {
-          type = types.path;
+          type = types.pathWith {
+            inStore = false;
+            absolute = true;
+          };
           description = "File with the bearer token (≥ 32 bytes), readable by root only, e.g. a sops secret. Passed to the service as a systemd credential.";
         };
         writable = mkOption {
@@ -42,7 +50,7 @@ let
         user = mkOption {
           type = types.str;
           default = "dirmcp-${name}";
-          description = "User the service runs as. Created by the module unless it is set to an existing user.";
+          description = "User the service runs as. Created by the module unless it is set to an existing user. Never root or your own account.";
         };
         group = mkOption {
           type = types.str;
@@ -72,14 +80,13 @@ let
     lib.hasPrefix "127." i.listen
     || lib.hasPrefix "[::1]" i.listen
     || lib.hasPrefix "localhost:" i.listen;
-  writes = i: i.writable || i.createIn != [ ];
 
   unit = name: i: {
     description = "dirmcp: ${i.root} over MCP (${name})";
     wantedBy = [ "multi-user.target" ];
     after = [ "network.target" ];
     serviceConfig = {
-      ExecStart = lib.escapeShellArgs (
+      ExecStart = utils.escapeSystemdExecArgs (
         [
           (lib.getExe package)
           "--root"
@@ -100,7 +107,7 @@ let
       Group = i.group;
       SupplementaryGroups = i.extraGroups;
       Restart = "on-failure";
-      UMask = "0007"; # new files stay group-readable (e.g. for a sync client)
+      UMask = "0007"; # new files are group-readable and -writable (e.g. for a sync client)
 
       # Kept open for the sandbox: each started program gets its own user,
       # mount and network namespace, mounts and pivots into a new root, and
@@ -122,10 +129,15 @@ let
       AmbientCapabilities = "";
       NoNewPrivileges = true;
       ProtectSystem = "strict";
-      ReadWritePaths = lib.optional (writes i) i.root;
-      ProtectHome =
-        !(lib.hasPrefix "/home/" (toString i.root) || lib.hasPrefix "/root/" (toString i.root));
+      # Homes are always hidden; the root (wherever it is) and the createIn
+      # folders are bound back, writable only where the instance writes.
+      ProtectHome = "tmpfs";
+      BindReadOnlyPaths = lib.optional (!i.writable) i.root;
+      BindPaths = if i.writable then [ i.root ] else map (d: "-${toString i.root}/${d}") i.createIn;
       PrivateTmp = true;
+      PrivateIPC = true;
+      RemoveIPC = true;
+      ProcSubset = "pid";
       PrivateDevices = true;
       ProtectKernelTunables = true;
       ProtectKernelModules = true;
@@ -165,6 +177,27 @@ in
   };
 
   config = lib.mkIf (cfg.instances != { }) {
+    assertions = lib.concatLists (
+      lib.mapAttrsToList (name: i: [
+        {
+          assertion = i.user != "root" && i.group != "root";
+          message = "services.dirmcp.instances.${name}: never run dirmcp as root (the bounding set would give it real capabilities).";
+        }
+        {
+          assertion = lib.all (
+            d: d != "" && !lib.hasPrefix "/" d && !lib.elem ".." (lib.splitString "/" d)
+          ) i.createIn;
+          message = "services.dirmcp.instances.${name}.createIn: folders must be relative to the root, without \"..\".";
+        }
+      ]) cfg.instances
+    );
+    warnings = lib.concatLists (
+      lib.mapAttrsToList (
+        name: i:
+        lib.optional (!loopback i)
+          "services.dirmcp.instances.${name}.listen = ${i.listen} is not loopback: dirmcp speaks plain HTTP and the unit's IP filter is off. Listen on 127.0.0.1 and put an HTTPS proxy in front."
+      ) cfg.instances
+    );
     systemd.services = lib.mapAttrs' (
       name: i: lib.nameValuePair "dirmcp-${name}" (unit name i)
     ) cfg.instances;

@@ -1,6 +1,6 @@
 ## Recon
 
-Checked 2026-11-18 against nixpkgs-unstable (systemd 262): `LoadCredential=` copies a root-only file into `$CREDENTIALS_DIRECTORY` (mode 0400, owned by the service user); `RestrictNamespaces=` takes a list of allowed types; `SystemCallFilter=@mount` covers `mount`, `umount2`, `pivot_root`; `CapabilityBoundingSet=` also bounds what a process gets on `execve` as uid 0 inside a user namespace; `PR_SET_SECUREBITS` and `PR_CAPBSET_DROP` need `CAP_SETPCAP`. `testers.runNixOSTest` for the VM test.
+Checked 2026-11-18 against nixpkgs-unstable (systemd 262): `LoadCredential=` copies a root-only file into `$CREDENTIALS_DIRECTORY` (mode 0440, owned by the service user); `RestrictNamespaces=` takes a list of allowed types; `SystemCallFilter=@mount` covers `mount`, `umount2`, `pivot_root`; `CapabilityBoundingSet=` also bounds what a process gets on `execve` as uid 0 inside a user namespace; `PR_SET_SECUREBITS` and `PR_CAPBSET_DROP` need `CAP_SETPCAP`. `testers.runNixOSTest` for the VM test.
 
 ## Context
 

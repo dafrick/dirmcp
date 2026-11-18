@@ -146,6 +146,9 @@ func readToken(path string) ([]byte, error) {
 	loose := st.Mode().Perm() & 0o077
 	if inCredentials(path) {
 		loose = st.Mode().Perm() & 0o007
+		if sys, ok := st.Sys().(*syscall.Stat_t); ok && int(sys.Uid) != os.Getuid() {
+			return nil, fmt.Errorf("token file %s is not owned by this user", path)
+		}
 	}
 	if loose != 0 {
 		return nil, fmt.Errorf("token file %s is readable by group or others (mode %o); use 0600 or 0400", path, st.Mode().Perm())
