@@ -2,6 +2,12 @@
 
 All notable changes are listed here. Format: [Keep a Changelog](https://keepachangelog.com). Versioning: [SemVer](https://semver.org), see `CONTRIBUTING.md`.
 
+## [0.2.1] - 2026-11-18
+
+### Fixed
+
+- The exec helper could fail with "out of memory" between setting the address-space limit and starting the program; it now uses raw syscalls there.
+
 ## [0.2.0] - 2026-11-18
 
 ### Added
