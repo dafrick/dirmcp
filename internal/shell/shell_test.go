@@ -3,6 +3,7 @@ package shell
 import (
 	"bytes"
 	"context"
+	"fmt"
 	"net"
 	"os"
 	"path/filepath"
@@ -21,6 +22,7 @@ func TestMain(m *testing.M) {
 	}
 	if len(os.Args) > 1 && os.Args[1] == confine.SelfTestArg {
 		if err := confine.SelfTest(os.Args[2]); err != nil {
+			fmt.Fprintln(os.Stderr, err)
 			os.Exit(1)
 		}
 		os.Exit(0)

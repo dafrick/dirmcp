@@ -2,6 +2,7 @@ package server
 
 import (
 	"context"
+	"fmt"
 	"io"
 	"log/slog"
 	"net/http"
@@ -22,7 +23,8 @@ func TestMain(m *testing.M) {
 		confine.RunHelper(os.Args[2:])
 	}
 	if len(os.Args) > 1 && os.Args[1] == confine.SelfTestArg {
-		if confine.SelfTest(os.Args[2]) != nil {
+		if err := confine.SelfTest(os.Args[2]); err != nil {
+			fmt.Fprintln(os.Stderr, err)
 			os.Exit(1)
 		}
 		os.Exit(0)
