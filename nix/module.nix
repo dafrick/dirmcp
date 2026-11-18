@@ -86,22 +86,23 @@ let
     wantedBy = [ "multi-user.target" ];
     after = [ "network.target" ];
     serviceConfig = {
-      ExecStart = utils.escapeSystemdExecArgs (
-        [
-          (lib.getExe package)
-          "--root"
-          i.root
-          "--listen"
-          i.listen
-          "--token-file"
-          "%d/token"
-        ]
-        ++ lib.optional i.writable "--writable"
-        ++ lib.concatMap (d: [
-          "--create-in"
-          d
-        ]) i.createIn
-      );
+      # %d (the credentials directory) must stay unescaped.
+      ExecStart =
+        utils.escapeSystemdExecArgs (
+          [
+            (lib.getExe package)
+            "--root"
+            i.root
+            "--listen"
+            i.listen
+          ]
+          ++ lib.optional i.writable "--writable"
+          ++ lib.concatMap (d: [
+            "--create-in"
+            d
+          ]) i.createIn
+        )
+        + " --token-file %d/token";
       LoadCredential = "token:${i.tokenFile}";
       User = i.user;
       Group = i.group;
