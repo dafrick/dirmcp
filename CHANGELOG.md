@@ -2,6 +2,12 @@
 
 All notable changes are listed here. Format: [Keep a Changelog](https://keepachangelog.com). Versioning: [SemVer](https://semver.org), see `CONTRIBUTING.md`.
 
+## [0.2.0] - 2026-11-18
+
+### Added
+
+- The server: `sh` (allowlisted tools and flags, pipes and loops, confined per command), `more` (paging of long or running output), `create` (new files only), bearer-token auth over Streamable HTTP.
+
 ## [0.1.0] - 2026-11-18
 
 ### Added
