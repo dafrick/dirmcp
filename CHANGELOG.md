@@ -6,9 +6,9 @@ All notable changes are listed here. Format: [Keep a Changelog](https://keepacha
 
 ### Added
 
-- The server: `sh` runs command lines (pipes, loops) with allowlisted GNU tools and options, each program under Landlock (directory only, no network, no foreign programs) and rlimits; built-in `rm` moves to `.trash/`.
+- The server: `sh` runs command lines (pipes, loops) with allowlisted GNU tools and options. Each program gets its own root (user, mount and network namespaces: only the directory and the Nix store exist), no capabilities, Landlock (no writes unless `--writable`, no foreign programs, no network) and rlimits; built-in `rm` moves to `.trash/`. Needs Linux 6.12+ with unprivileged user namespaces.
 - `more` pages output over 30 KB or still running after 15 s; `create` makes new files only (`--create-in`).
-- Streamable HTTP endpoint with a bearer token (≥ 32 bytes, private file), body and concurrency limits, logs without file contents.
+- Streamable HTTP endpoint with a bearer token (≥ 32 bytes, private file, compared by hash), body, time and concurrency limits, logs without file contents.
 - Nix package that pins every tool to a store path; Go tests run in the package build. ADR 0005.
 
 ## [0.1.0] - 2026-11-18

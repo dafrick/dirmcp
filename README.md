@@ -14,7 +14,9 @@ Status: the server works (`sh`, `more`, `create`). A NixOS module with hardened 
 | `more` | Next part of an answer that was cut at 30 KB or still running after 15 s. Output is kept in RAM for 10 minutes. |
 | `create` | Only with `--create-in DIR`: makes a new file below `DIR`, never overwrites. |
 
-Every started program runs under [Landlock](https://landlock.io): it can read only the directory and the tools' own files, write only when the server is started with `--writable`, start only the allowed programs, and use no network. It also gets CPU, memory and file-size limits and is killed after 5 minutes. Linux 6.12 or newer is needed (Landlock ABI 6); the server refuses to start otherwise.
+Every started program gets its own root in new user, mount and network namespaces: only the directory, the Nix store and three devices exist there (no `/etc`, `/home` or `/proc`), with no network and no capabilities. On top, [Landlock](https://landlock.io) lets it read only the directory and the tools' own files, write only when the server is started with `--writable`, and start only the allowed programs. It also gets CPU, memory and file-size limits and is killed after 5 minutes.
+
+Needs Linux 6.12 or newer (Landlock ABI 6) with unprivileged user namespaces; the server checks at startup and refuses to run otherwise. NixOS allows them by default; Ubuntu blocks them through AppArmor (`kernel.apparmor_restrict_unprivileged_userns`).
 
 ## Usage
 

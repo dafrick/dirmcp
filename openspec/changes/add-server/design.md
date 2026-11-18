@@ -68,7 +68,7 @@ Programs (first set): coreutils `ls cat head tail wc sort uniq cut tr paste comm
 
 ### Confinement (per started program)
 
-The exec helper is `dirmcp` itself, re-executed as `dirmcp __exec <manifest-entry> -- args`. It sets rlimits, applies Landlock, then `execve`s the store path.
+The exec helper is `dirmcp` itself, started as `dirmcp __exec <spec> -- <path> args` in new **user, mount and network namespaces** (our uid is 0 inside, nowhere else). It builds a new root (read-only tmpfs) holding only the root directory, `/nix/store`, the job's scratch dir and three devices, `pivot_root`s into it and detaches the old root, so nothing else exists by path, not even for `stat` or `readlink` (Landlock does not mediate those; found in review). Then it drops all capabilities (securebits locked), applies Landlock, sets rlimits and `execve`s the store path.
 
 | Access | Allowed |
 |---|---|
@@ -78,7 +78,7 @@ The exec helper is `dirmcp` itself, re-executed as `dirmcp __exec <manifest-entr
 | Network | no TCP bind/connect (ABI 4) |
 | IPC | no abstract UNIX sockets or signals outside the sandbox (ABI 6) |
 
-- Landlock is **required, not best effort**: if the kernel lacks the ABI we need (6), the server refuses to start.
+- Landlock and unprivileged user namespaces are **required, not best effort**: the server runs a self-test child at startup and refuses to start without them. Hosts that block unprivileged user namespaces (Ubuntu's AppArmor default) cannot run dirmcp.
 - rlimits, set after Landlock (the helper's own Go runtime needs more address space): CPU 60 s, address space 1 GiB, file size 100 MiB, open files 256, no core dumps. No process-count rlimit: `RLIMIT_NPROC` counts all processes of the user, so it belongs in the service unit (`TasksMax`, next change). Wall time 5 min, then the process group is killed.
 - The server process itself has no Landlock rules (it needs the socket and the token). systemd hardening for it comes with the NixOS module.
 
@@ -117,9 +117,10 @@ The exec helper is `dirmcp` itself, re-executed as `dirmcp __exec <manifest-entr
 |---|---|
 | Run arbitrary programs | ExecHandler allowlist; no `PATH`; Landlock execute rule on the tools' closure only |
 | Run code through a tool's options (`find -exec`, `rg --pre`, sed `e`, awk `system()`, `sort --compress-program`) | Flag allowlist; forced `--sandbox`; Landlock execute rule as backstop |
-| Read outside the root (`../`, absolute paths, symlinks) | Landlock read rule; `os.Root` for redirections and `create` |
+| Read outside the root (`../`, absolute paths, symlinks) | Mount namespace: outside paths do not exist; Landlock read rule; `os.Root` for redirections and `create` |
+| Metadata outside the root (`stat`, `readlink`, `statfs`) | Mount namespace (Landlock does not cover these) |
 | Write in read-only mode | Landlock write rule; `OpenHandler` checks |
-| Network (exfiltration, LAN) | Landlock network rule; tools have no network use anyway |
+| Network (exfiltration, LAN) | Empty network namespace; Landlock network rule |
 | Exhaust the machine | rlimits, wall time, output caps, concurrency limit |
 | Read other callers' output via `more` | Single token per server; IDs 128-bit random |
 
@@ -127,6 +128,8 @@ The exec helper is `dirmcp` itself, re-executed as `dirmcp __exec <manifest-entr
 
 ## Found during apply
 
+- Review: Landlock leaves `stat`/`readlink`/`statfs` open, so programs could read metadata of any host path → user+mount+network namespaces with `pivot_root`.
+- With our uid mapped to itself, the helper loses its capabilities on `execve` and cannot mount → uid 0 inside the namespace, all capabilities dropped before the program starts.
 - Both sides of a pipeline write stderr from different goroutines: `Run` serialises writes to its output.
 - The Landlock self-test restricts the calling process, so it always runs in a child (`dirmcp __selftest`).
 - coreutils 9.12 adds terminal escape codes to `--help`; the generator strips them and runs tools with `TERM=dumb`.

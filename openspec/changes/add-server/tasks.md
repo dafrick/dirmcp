@@ -38,5 +38,5 @@
 
 ## 8. Review and close
 
-- [ ] 8.1 Independent security review of the diff, posted on the PR; fix findings
+- [x] 8.1 Independent security review of the diff, posted on the PR; fix findings
 - [ ] 8.2 Archive (sync specs), update the PR description
