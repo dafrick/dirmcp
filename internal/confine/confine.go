@@ -47,7 +47,7 @@ type Spec struct {
 	Tmp      string   `json:"tmp"`            // private scratch dir (read-write), may be empty
 	Stage    string   `json:"stage"`          // empty dir, becomes the new root
 	Exec     []string `json:"exec"`           // store paths: readable and executable
-	Bind     []string `json:"bind,omitempty"` // tests only: extra read-only paths
+	Bind     []string `json:"bind,omitempty"` // tests only: extra paths, readable (executable only if also in Exec)
 }
 
 // Limits for every started program. Wall time is enforced by the caller.
@@ -114,12 +114,15 @@ func rules(s Spec) []landlock.Rule {
 	}
 	r := []landlock.Rule{
 		landlock.PathAccess(root, s.Root),
-		landlock.PathAccess(storeAccess, append(append([]string{}, s.Exec...), s.Bind...)...),
+		landlock.PathAccess(storeAccess, s.Exec...),
 		landlock.PathAccess(devAccess, "/dev/null"),
 		landlock.PathAccess(ll.AccessFSReadFile, "/dev/zero", "/dev/urandom"),
 	}
 	if s.Tmp != "" {
 		r = append(r, landlock.PathAccess(rootRead|rootWrite, s.Tmp))
+	}
+	if len(s.Bind) > 0 {
+		r = append(r, landlock.PathAccess(rootRead, s.Bind...)) // visible, not executable
 	}
 	// No NetRule: all TCP bind and connect is denied. Restrict also scopes
 	// abstract UNIX sockets and signals to the sandbox.
