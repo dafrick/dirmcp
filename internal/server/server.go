@@ -147,17 +147,20 @@ func verifier(c Config) auth.TokenVerifier {
 // checkHost refuses requests whose Host is neither a localhost name nor one
 // of the allowed public names (case and port do not matter).
 func checkHost(c Config, h http.Handler) http.Handler {
+	norm := func(h string) string { return strings.TrimSuffix(strings.ToLower(h), ".") }
 	allowed := map[string]bool{"localhost": true}
 	for _, a := range c.AllowedHosts {
-		allowed[strings.ToLower(a)] = true
+		if a = norm(strings.TrimSpace(a)); a != "" {
+			allowed[a] = true
+		}
 	}
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		host := r.Host
 		if hh, _, err := net.SplitHostPort(host); err == nil {
 			host = hh
 		}
-		host = strings.ToLower(strings.Trim(host, "[]"))
-		if ip := net.ParseIP(host); (ip != nil && ip.IsLoopback()) || allowed[host] {
+		host = norm(strings.Trim(host, "[]"))
+		if ip := net.ParseIP(host); (ip != nil && ip.IsLoopback()) || (host != "" && allowed[host]) {
 			h.ServeHTTP(w, r)
 			return
 		}

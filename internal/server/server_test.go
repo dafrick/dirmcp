@@ -96,7 +96,7 @@ func TestAuth(t *testing.T) {
 
 // Behind a proxy the Host is the public name: allowed only if configured.
 func TestHosts(t *testing.T) {
-	s, _ := newServer(t, nil, "Notes.Example.ts.net")
+	s, _ := newServer(t, nil, "Notes.Example.ts.net", "")
 	for host, want := range map[string]int{
 		"notes.example.ts.net":      http.StatusOK,
 		"NOTES.example.ts.net:443":  http.StatusOK,
@@ -105,6 +105,7 @@ func TestHosts(t *testing.T) {
 		"[::1]:8090":                http.StatusOK,
 		"evil.example":              http.StatusForbidden,
 		"notes.example.ts.net.evil": http.StatusForbidden,
+		"notes.example.ts.net.":     http.StatusOK, // same DNS name
 	} {
 		if code := post(t, s.URL, "Bearer "+token, initBody, host); code != want {
 			t.Errorf("Host %s: status %d, want %d", host, code, want)
@@ -118,6 +119,20 @@ func TestHosts(t *testing.T) {
 	// Refused before auth: no token needed to be told no.
 	if code := post(t, s.URL, "", initBody, "evil.example"); code != http.StatusForbidden {
 		t.Errorf("bad host without token: status %d, want 403", code)
+	}
+}
+
+// An empty Host (HTTP/1.0 without Host) is refused even if an empty name
+// was configured. Tested on the handler: the client would fill in Host.
+func TestEmptyHost(t *testing.T) {
+	ok := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {})
+	h := checkHost(Config{AllowedHosts: []string{"", " "}, Log: slog.New(slog.NewTextHandler(io.Discard, nil))}, ok)
+	r := httptest.NewRequest("POST", "/mcp", nil)
+	r.Host = ""
+	w := httptest.NewRecorder()
+	h.ServeHTTP(w, r)
+	if w.Code != http.StatusForbidden {
+		t.Errorf("empty Host: status %d, want 403", w.Code)
 	}
 }
 
