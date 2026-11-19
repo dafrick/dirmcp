@@ -32,6 +32,8 @@ type Config struct {
 	Token    []byte
 	Version  string
 	Log      *slog.Logger
+	// Path of the MCP endpoint, e.g. "/dirmcp" (the default) or "/notes".
+	Path string
 	// AllowedHosts are public names (Host header) a proxy in front may use,
 	// e.g. "notes.example.ts.net". Localhost names are always allowed; any
 	// other Host is refused (DNS rebinding protection).
@@ -54,7 +56,8 @@ type CreateIn struct {
 	Content string `json:"content" jsonschema:"the file content"`
 }
 
-// Handler returns the HTTP handler: /mcp behind the bearer token.
+// Handler returns the HTTP handler: the endpoint (Path) behind the bearer
+// token. Every other path is 404.
 func Handler(ctx context.Context, c Config) http.Handler {
 	m := jobs.New(ctx)
 	s := mcp.NewServer(&mcp.Implementation{Name: "dirmcp", Version: c.Version}, &mcp.ServerOptions{
@@ -96,8 +99,12 @@ func Handler(ctx context.Context, c Config) http.Handler {
 	h := mcp.NewStreamableHTTPHandler(func(*http.Request) *mcp.Server { return s },
 		&mcp.StreamableHTTPOptions{Stateless: true, DisableLocalhostProtection: true})
 	authed := auth.RequireBearerToken(verifier(c), &auth.RequireBearerTokenOptions{AllowMissingExpiration: true})(h)
+	path := c.Path
+	if path == "" {
+		path = "/dirmcp"
+	}
 	mux := http.NewServeMux()
-	mux.Handle("/mcp", checkHost(c, limitBody(authed)))
+	mux.Handle(path, checkHost(c, limitBody(authed)))
 	return mux
 }
 

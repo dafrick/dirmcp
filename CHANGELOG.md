@@ -2,6 +2,16 @@
 
 All notable changes are listed here. Format: [Keep a Changelog](https://keepachangelog.com). Versioning: [SemVer](https://semver.org), see `CONTRIBUTING.md`.
 
+## [0.4.0] - 2026-11-19
+
+### Added
+
+- `--path` (module: `path`): the endpoint's path, e.g. `/notes`. Every other path is 404.
+
+### Changed
+
+- The default endpoint path is `/dirmcp` (was the fixed `/mcp`). Clients of a server without `--path` must change their URL.
+
 ## [0.3.1] - 2026-11-19
 
 ### Fixed
