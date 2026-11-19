@@ -11,6 +11,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	pathpkg "path"
 	"path/filepath"
 	"strings"
 	"syscall"
@@ -184,10 +185,17 @@ func inCredentials(path string) bool {
 	return err == nil && rel != ".." && !strings.HasPrefix(rel, "../")
 }
 
-// validPath accepts "/x", "/x/y", … with plain characters only.
+// validPath accepts "/x", "/x/y", … with plain characters only: segments of
+// [A-Za-z0-9._-], none starting with a dot (same rule as the Nix module), and
+// already clean (ServeMux would redirect anything else and then 404).
 func validPath(p string) bool {
-	if len(p) < 2 || p[0] != '/' || strings.HasSuffix(p, "/") || strings.Contains(p, "//") || strings.Contains(p, "..") {
+	if len(p) < 2 || p[0] != '/' || pathpkg.Clean(p) != p {
 		return false
+	}
+	for _, seg := range strings.Split(p[1:], "/") {
+		if seg == "" || seg[0] == '.' {
+			return false
+		}
 	}
 	for _, r := range p {
 		if !(r >= 'a' && r <= 'z' || r >= 'A' && r <= 'Z' || r >= '0' && r <= '9' || strings.ContainsRune("/-_.", r)) {

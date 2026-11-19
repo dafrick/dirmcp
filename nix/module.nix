@@ -28,10 +28,11 @@ let
         listen = mkOption {
           type = types.str;
           default = "127.0.0.1:8090";
-          description = "Address of the MCP endpoint (`/mcp`). Keep it on loopback and put an HTTPS proxy in front.";
+          description = "Address of the MCP endpoint (path: `path`). Keep it on loopback and put an HTTPS proxy in front.";
         };
         path = mkOption {
-          type = types.strMatching "/[A-Za-z0-9._/-]*[A-Za-z0-9._-]";
+          # Same rule as the server: segments of [A-Za-z0-9._-], none starting with a dot.
+          type = types.strMatching "(/[A-Za-z0-9_-][A-Za-z0-9._-]*)+";
           default = "/mcp";
           example = "/notes";
           description = "Path of the MCP endpoint. Every other path is 404.";

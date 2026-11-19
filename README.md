@@ -37,13 +37,13 @@ openssl rand -hex 32 > token && chmod 600 token
 | `--allowed-host NAME` | none | public name a proxy in front uses (Host header), e.g. `notes.example.ts.net` (repeatable). Other names are refused (DNS rebinding); localhost always works |
 | `--tools FILE` | set by the package | tools manifest: program → store path |
 
-Clients send `Authorization: Bearer <token>`. For a claude.ai custom connector, put the URL of a public HTTPS proxy in front of `/mcp` and the header under "Request headers". The binary must come from the Nix package: it pins every tool to a store path and never searches `PATH`.
+Clients send `Authorization: Bearer <token>`. For a claude.ai custom connector, put the URL of a public HTTPS proxy in front of the endpoint path and the header under "Request headers". The binary must come from the Nix package: it pins every tool to a store path and never searches `PATH`.
 
 ## NixOS
 
 ```nix
 # flake.nix
-inputs.dirmcp.url = "github:dafrick/dirmcp/v0.3.0";
+inputs.dirmcp.url = "github:dafrick/dirmcp/v0.4.0";
 # in the host's modules:
 imports = [ inputs.dirmcp.nixosModules.default ];
 services.dirmcp.instances.notes = {

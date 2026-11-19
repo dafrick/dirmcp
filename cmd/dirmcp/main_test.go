@@ -51,6 +51,7 @@ func TestValidPath(t *testing.T) {
 	for p, want := range map[string]bool{
 		"/mcp": true, "/obsidian": true, "/a/b-c_d.e": true,
 		"": false, "/": false, "mcp": false, "/mcp/": false, "//x": false, "/a/../b": false, "/a b": false, "/ä": false, "/a?b": false,
+		"/.": false, "/a/.": false, "/a/./b": false, "/.hidden": false, "/a/.b": false, "/a//b": false, "/a.b": true,
 	} {
 		if got := validPath(p); got != want {
 			t.Errorf("validPath(%q) = %v, want %v", p, got, want)
