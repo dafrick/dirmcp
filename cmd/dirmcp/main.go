@@ -64,8 +64,10 @@ func run() error {
 		tools     = flag.String("tools", defaultTools, "tools manifest (set by the Nix package)")
 		showVer   = flag.Bool("version", false, "print the version")
 		createIn  list
+		hosts     list
 	)
 	flag.Var(&createIn, "create-in", "enable the create tool below this folder of the root (repeatable)")
+	flag.Var(&hosts, "allowed-host", "public name a proxy in front uses in the Host header, e.g. notes.example.ts.net (repeatable); localhost is always allowed")
 	flag.Parse()
 	if *showVer {
 		fmt.Println(version)
@@ -110,11 +112,12 @@ func run() error {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 	h := server.Handler(ctx, server.Config{
-		Shell:    &shell.Config{Root: dir, Writable: *writable, Tools: m, Self: self},
-		CreateIn: createIn,
-		Token:    token,
-		Version:  version,
-		Log:      log,
+		Shell:        &shell.Config{Root: dir, Writable: *writable, Tools: m, Self: self},
+		CreateIn:     createIn,
+		AllowedHosts: hosts,
+		Token:        token,
+		Version:      version,
+		Log:          log,
 	})
 	srv := &http.Server{Addr: *listen, Handler: h,
 		ReadHeaderTimeout: 10 * time.Second,
@@ -124,7 +127,7 @@ func run() error {
 	}
 	errc := make(chan error, 1)
 	go func() { errc <- srv.ListenAndServe() }()
-	log.Info("serving", "root", dir, "listen", *listen, "writable", *writable, "create_in", createIn.String(), "version", version)
+	log.Info("serving", "root", dir, "listen", *listen, "writable", *writable, "create_in", createIn.String(), "allowed_hosts", hosts.String(), "version", version)
 	select {
 	case err := <-errc:
 		return err
