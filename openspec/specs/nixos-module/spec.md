@@ -25,3 +25,10 @@ The unit SHALL apply the hardening listed in the design and keep open only what 
 #### Scenario: Sandbox works under the unit
 - **WHEN** a client runs `stat /etc/passwd` and `cat a.md` through the service
 - **THEN** `/etc/passwd` does not exist for the program and `a.md` is printed
+
+### Requirement: Path option
+Each instance SHALL have an option `path` (default `/dirmcp`) passed to the server as `--path`.
+
+#### Scenario: Instance on /notes
+- **WHEN** an instance sets `path = "/notes"`
+- **THEN** it answers on `/notes` only

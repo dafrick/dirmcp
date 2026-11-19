@@ -6,7 +6,7 @@ TBD - created by archiving change add-server. Update Purpose after archive.
 ## Requirements
 
 ### Requirement: Bearer token
-The server SHALL serve MCP over Streamable HTTP at `/mcp` and reject every request without the exact bearer token from `--token-file`, compared in constant time, before any MCP processing. It SHALL refuse to start if the token is shorter than 32 bytes or the file is readable by group or others.
+The server SHALL serve MCP over Streamable HTTP at its endpoint path (`--path`, default `/dirmcp`) and reject every request without the exact bearer token from `--token-file`, compared in constant time, before any MCP processing. It SHALL refuse to start if the token is shorter than 32 bytes or the file is readable by group or others.
 
 #### Scenario: No or wrong token
 - **WHEN** a request has no `Authorization` header or a wrong token
@@ -33,3 +33,10 @@ The server SHALL refuse with 403, before authentication, any request whose Host 
 #### Scenario: Rebinding
 - **WHEN** a request arrives with Host `evil.example`
 - **THEN** it gets 403
+
+### Requirement: Endpoint path
+The server SHALL serve MCP only at the path given with `--path` (default `/dirmcp`) and answer 404 on every other path. It SHALL refuse to start with a path that is not `/name[/name…]` of letters, digits and `-_.`, or that ends in `/` or contains `..`.
+
+#### Scenario: Custom path
+- **WHEN** the server runs with `--path /notes`
+- **THEN** `POST /notes` with the token is served and `POST /dirmcp` gets 404
