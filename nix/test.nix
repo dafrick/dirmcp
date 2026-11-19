@@ -64,7 +64,7 @@ pkgs.testers.runNixOSTest {
 
     TOKEN = "0123456789abcdef0123456789abcdef0123456789abcdef"  # gitleaks:allow (test value)
 
-    PATHS = {8091: "/mcp", 8092: "/notes"}
+    PATHS = {8091: "/dirmcp", 8092: "/notes"}
 
     def call(port, tool, args, token=TOKEN):
         body = json.dumps({"jsonrpc": "2.0", "id": 1, "method": "tools/call",
@@ -102,11 +102,13 @@ pkgs.testers.runNixOSTest {
         assert init_code(8092, "rw.example.ts.net") == "200"
         assert init_code(8092, "evil.example") == "403"
         assert init_code(8091, "rw.example.ts.net") == "403"
-        old = machine.succeed("curl -s -o /dev/null -w '%{http_code}' -X POST http://127.0.0.1:8092/mcp")
+        old = machine.succeed("curl -s -o /dev/null -w '%{http_code}' -X POST http://127.0.0.1:8092/dirmcp")
         assert old == "404", old  # the writable instance answers only on /notes
+        legacy = machine.succeed("curl -s -o /dev/null -w '%{http_code}' -X POST http://127.0.0.1:8091/mcp")
+        assert legacy == "404", legacy  # the old fixed path is gone
 
     with subtest("auth"):
-        code = machine.succeed("curl -s -o /dev/null -w '%{http_code}' -X POST http://127.0.0.1:8091/mcp")
+        code = machine.succeed("curl -s -o /dev/null -w '%{http_code}' -X POST http://127.0.0.1:8091/dirmcp")
         assert code == "401", code
 
     with subtest("token never in the unit or store"):

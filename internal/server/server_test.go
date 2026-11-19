@@ -58,7 +58,7 @@ const initBody = `{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"proto
 
 func post(t *testing.T, url, auth, body string, host ...string) int {
 	t.Helper()
-	req, _ := http.NewRequest("POST", url+"/mcp", strings.NewReader(body))
+	req, _ := http.NewRequest("POST", url+"/dirmcp", strings.NewReader(body))
 	if len(host) > 0 {
 		req.Host = host[0]
 	}
@@ -127,7 +127,7 @@ func TestHosts(t *testing.T) {
 func TestEmptyHost(t *testing.T) {
 	ok := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {})
 	h := checkHost(Config{AllowedHosts: []string{"", " "}, Log: slog.New(slog.NewTextHandler(io.Discard, nil))}, ok)
-	r := httptest.NewRequest("POST", "/mcp", nil)
+	r := httptest.NewRequest("POST", "/dirmcp", nil)
 	r.Host = ""
 	w := httptest.NewRecorder()
 	h.ServeHTTP(w, r)
@@ -136,14 +136,14 @@ func TestEmptyHost(t *testing.T) {
 	}
 }
 
-// A custom path replaces /mcp; nothing else answers.
+// A custom path replaces the default; nothing else answers.
 func TestPath(t *testing.T) {
 	root := t.TempDir()
 	h := Handler(t.Context(), Config{Shell: &shell.Config{Root: root}, Token: []byte(token), Path: "/obsidian",
 		Version: "test", Log: slog.New(slog.NewTextHandler(io.Discard, nil))})
 	s := httptest.NewServer(h)
 	defer s.Close()
-	for path, want := range map[string]int{"/obsidian": http.StatusOK, "/mcp": http.StatusNotFound, "/obsidian/x": http.StatusNotFound} {
+	for path, want := range map[string]int{"/obsidian": http.StatusOK, "/dirmcp": http.StatusNotFound, "/mcp": http.StatusNotFound, "/obsidian/x": http.StatusNotFound} {
 		req, _ := http.NewRequest("POST", s.URL+path, strings.NewReader(initBody))
 		req.Header.Set("Content-Type", "application/json")
 		req.Header.Set("Accept", "application/json, text/event-stream")
@@ -181,7 +181,7 @@ func TestTools(t *testing.T) {
 	s, root := newServer(t, []string{"Inbox"})
 	ctx := context.Background()
 	c := mcp.NewClient(&mcp.Implementation{Name: "t", Version: "1"}, nil)
-	sess, err := c.Connect(ctx, &mcp.StreamableClientTransport{Endpoint: s.URL + "/mcp", HTTPClient: &http.Client{Transport: bearer{http.DefaultTransport}}}, nil)
+	sess, err := c.Connect(ctx, &mcp.StreamableClientTransport{Endpoint: s.URL + "/dirmcp", HTTPClient: &http.Client{Transport: bearer{http.DefaultTransport}}}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -33,7 +33,7 @@ let
         path = mkOption {
           # Same rule as the server: segments of [A-Za-z0-9._-], none starting with a dot.
           type = types.strMatching "(/[A-Za-z0-9_-][A-Za-z0-9._-]*)+";
-          default = "/mcp";
+          default = "/dirmcp";
           example = "/notes";
           description = "Path of the MCP endpoint. Every other path is 404.";
         };

@@ -32,7 +32,7 @@ type Config struct {
 	Token    []byte
 	Version  string
 	Log      *slog.Logger
-	// Path of the MCP endpoint, e.g. "/mcp" (the default) or "/notes".
+	// Path of the MCP endpoint, e.g. "/dirmcp" (the default) or "/notes".
 	Path string
 	// AllowedHosts are public names (Host header) a proxy in front may use,
 	// e.g. "notes.example.ts.net". Localhost names are always allowed; any
@@ -101,7 +101,7 @@ func Handler(ctx context.Context, c Config) http.Handler {
 	authed := auth.RequireBearerToken(verifier(c), &auth.RequireBearerTokenOptions{AllowMissingExpiration: true})(h)
 	path := c.Path
 	if path == "" {
-		path = "/mcp"
+		path = "/dirmcp"
 	}
 	mux := http.NewServeMux()
 	mux.Handle(path, checkHost(c, limitBody(authed)))

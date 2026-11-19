@@ -60,7 +60,7 @@ func run() error {
 	var (
 		root      = flag.String("root", "", "directory to serve (required)")
 		listen    = flag.String("listen", "127.0.0.1:8090", "address to listen on")
-		path      = flag.String("path", "/mcp", "path of the MCP endpoint, e.g. /notes")
+		path      = flag.String("path", "/dirmcp", "path of the MCP endpoint, e.g. /notes")
 		tokenFile = flag.String("token-file", "", "file with the bearer token, at least 32 bytes, mode 0600 or 0400 (required)")
 		writable  = flag.Bool("writable", false, "let programs change files under the root")
 		tools     = flag.String("tools", defaultTools, "tools manifest (set by the Nix package)")

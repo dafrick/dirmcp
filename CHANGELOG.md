@@ -6,7 +6,11 @@ All notable changes are listed here. Format: [Keep a Changelog](https://keepacha
 
 ### Added
 
-- `--path` (module: `path`): the endpoint's path, default `/mcp`, e.g. `/notes`. Every other path is 404.
+- `--path` (module: `path`): the endpoint's path, e.g. `/notes`. Every other path is 404.
+
+### Changed
+
+- The default endpoint path is `/dirmcp` (was the fixed `/mcp`). Clients of a server without `--path` must change their URL.
 
 ## [0.3.1] - 2026-11-19
 
