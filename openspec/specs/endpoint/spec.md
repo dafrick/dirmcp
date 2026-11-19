@@ -22,3 +22,14 @@ The server SHALL limit request bodies to 2 MiB, header reads to 10 s and running
 #### Scenario: Busy
 - **WHEN** a fifth command is started while four run
 - **THEN** the call returns "busy, retry" and starts nothing
+
+### Requirement: Host check
+The server SHALL refuse with 403, before authentication, any request whose Host header is neither a localhost name or loopback IP nor one of the names given with `--allowed-host` (case and port ignored).
+
+#### Scenario: Behind a proxy
+- **WHEN** `--allowed-host notes.example.ts.net` is set and a request arrives with that Host and the token
+- **THEN** it is served
+
+#### Scenario: Rebinding
+- **WHEN** a request arrives with Host `evil.example`
+- **THEN** it gets 403
