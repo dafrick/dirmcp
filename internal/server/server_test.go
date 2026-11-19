@@ -34,7 +34,7 @@ func TestMain(m *testing.M) {
 
 const token = "0123456789abcdef0123456789abcdef-test" // gitleaks:allow (test value)
 
-func newServer(t *testing.T, createIn []string) (*httptest.Server, string) {
+func newServer(t *testing.T, createIn []string, allowedHosts ...string) (*httptest.Server, string) {
 	t.Helper()
 	root := t.TempDir()
 	os.MkdirAll(filepath.Join(root, "Inbox"), 0o755)
@@ -42,11 +42,12 @@ func newServer(t *testing.T, createIn []string) (*httptest.Server, string) {
 	tools, _ := manifest.Load(os.Getenv("DIRMCP_TOOLS"))
 	self, _ := os.Executable()
 	h := Handler(t.Context(), Config{
-		Shell:    &shell.Config{Root: root, Tools: tools, Self: self},
-		CreateIn: createIn,
-		Token:    []byte(token),
-		Version:  "test",
-		Log:      slog.New(slog.NewTextHandler(io.Discard, nil)),
+		Shell:        &shell.Config{Root: root, Tools: tools, Self: self},
+		CreateIn:     createIn,
+		AllowedHosts: allowedHosts,
+		Token:        []byte(token),
+		Version:      "test",
+		Log:          slog.New(slog.NewTextHandler(io.Discard, nil)),
 	})
 	s := httptest.NewServer(h)
 	t.Cleanup(s.Close)
@@ -55,9 +56,12 @@ func newServer(t *testing.T, createIn []string) (*httptest.Server, string) {
 
 const initBody = `{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"t","version":"1"}}}`
 
-func post(t *testing.T, url, auth, body string) int {
+func post(t *testing.T, url, auth, body string, host ...string) int {
 	t.Helper()
 	req, _ := http.NewRequest("POST", url+"/mcp", strings.NewReader(body))
+	if len(host) > 0 {
+		req.Host = host[0]
+	}
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Accept", "application/json, text/event-stream")
 	if auth != "" {
@@ -87,6 +91,33 @@ func TestAuth(t *testing.T) {
 	}
 	if code := post(t, s.URL, "Bearer "+token, `{"x":"`+strings.Repeat("a", MaxBody+10)+`"}`); code < 400 {
 		t.Errorf("oversized body: status %d, want an error", code)
+	}
+}
+
+// Behind a proxy the Host is the public name: allowed only if configured.
+func TestHosts(t *testing.T) {
+	s, _ := newServer(t, nil, "Notes.Example.ts.net")
+	for host, want := range map[string]int{
+		"notes.example.ts.net":      http.StatusOK,
+		"NOTES.example.ts.net:443":  http.StatusOK,
+		"localhost:8090":            http.StatusOK,
+		"127.0.0.1":                 http.StatusOK,
+		"[::1]:8090":                http.StatusOK,
+		"evil.example":              http.StatusForbidden,
+		"notes.example.ts.net.evil": http.StatusForbidden,
+	} {
+		if code := post(t, s.URL, "Bearer "+token, initBody, host); code != want {
+			t.Errorf("Host %s: status %d, want %d", host, code, want)
+		}
+	}
+	// Without allowed hosts, only localhost names.
+	s2, _ := newServer(t, nil)
+	if code := post(t, s2.URL, "Bearer "+token, initBody, "notes.example.ts.net"); code != http.StatusForbidden {
+		t.Errorf("no allowed hosts: status %d, want 403", code)
+	}
+	// Refused before auth: no token needed to be told no.
+	if code := post(t, s.URL, "", initBody, "evil.example"); code != http.StatusForbidden {
+		t.Errorf("bad host without token: status %d, want 403", code)
 	}
 }
 

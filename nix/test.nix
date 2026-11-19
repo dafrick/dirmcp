@@ -53,6 +53,7 @@ pkgs.testers.runNixOSTest {
         listen = "127.0.0.1:8092";
         tokenFile = "/etc/dirmcp/token";
         writable = true;
+        allowedHosts = [ "rw.example.ts.net" ];
       };
     };
   };
@@ -86,6 +87,18 @@ pkgs.testers.runNixOSTest {
         raise
     machine.wait_for_open_port(8091)
     machine.wait_for_open_port(8092)
+
+    with subtest("host check (proxy names)"):
+        def init_code(port, host):
+            return machine.succeed(
+                "curl -s -o /dev/null -w '%{http_code}' -H 'Content-Type: application/json' "
+                "-H 'Accept: application/json, text/event-stream' "
+                f"-H 'Authorization: Bearer {TOKEN}' -H 'Host: {host}' "
+                "-d '{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"tools/list\"}' "
+                f"http://127.0.0.1:{port}/mcp")
+        assert init_code(8092, "rw.example.ts.net") == "200"
+        assert init_code(8092, "evil.example") == "403"
+        assert init_code(8091, "rw.example.ts.net") == "403"
 
     with subtest("auth"):
         code = machine.succeed("curl -s -o /dev/null -w '%{http_code}' -X POST http://127.0.0.1:8091/mcp")
