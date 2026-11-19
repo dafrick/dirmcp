@@ -54,6 +54,7 @@ pkgs.testers.runNixOSTest {
         tokenFile = "/etc/dirmcp/token";
         writable = true;
         allowedHosts = [ "rw.example.ts.net" ];
+        path = "/notes";
       };
     };
   };
@@ -63,6 +64,8 @@ pkgs.testers.runNixOSTest {
 
     TOKEN = "0123456789abcdef0123456789abcdef0123456789abcdef"  # gitleaks:allow (test value)
 
+    PATHS = {8091: "/mcp", 8092: "/notes"}
+
     def call(port, tool, args, token=TOKEN):
         body = json.dumps({"jsonrpc": "2.0", "id": 1, "method": "tools/call",
                            "params": {"name": tool, "arguments": args}})
@@ -70,7 +73,7 @@ pkgs.testers.runNixOSTest {
             f"curl -s -H 'Content-Type: application/json' "
             f"-H 'Accept: application/json, text/event-stream' "
             f"-H 'Authorization: Bearer {token}' "
-            f"--data @- http://127.0.0.1:{port}/mcp <<'EOF'\n{body}\nEOF"
+            f"--data @- http://127.0.0.1:{port}{PATHS[port]} <<'EOF'\n{body}\nEOF"
         )
         data = json.loads(out.split("data: ", 1)[1])
         res = data["result"]
@@ -95,10 +98,12 @@ pkgs.testers.runNixOSTest {
                 "-H 'Accept: application/json, text/event-stream' "
                 f"-H 'Authorization: Bearer {TOKEN}' -H 'Host: {host}' "
                 "-d '{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"tools/list\"}' "
-                f"http://127.0.0.1:{port}/mcp")
+                f"http://127.0.0.1:{port}{PATHS[port]}")
         assert init_code(8092, "rw.example.ts.net") == "200"
         assert init_code(8092, "evil.example") == "403"
         assert init_code(8091, "rw.example.ts.net") == "403"
+        old = machine.succeed("curl -s -o /dev/null -w '%{http_code}' -X POST http://127.0.0.1:8092/mcp")
+        assert old == "404", old  # the writable instance answers only on /notes
 
     with subtest("auth"):
         code = machine.succeed("curl -s -o /dev/null -w '%{http_code}' -X POST http://127.0.0.1:8091/mcp")

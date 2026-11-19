@@ -59,6 +59,7 @@ func run() error {
 	var (
 		root      = flag.String("root", "", "directory to serve (required)")
 		listen    = flag.String("listen", "127.0.0.1:8090", "address to listen on")
+		path      = flag.String("path", "/mcp", "path of the MCP endpoint, e.g. /notes")
 		tokenFile = flag.String("token-file", "", "file with the bearer token, at least 32 bytes, mode 0600 or 0400 (required)")
 		writable  = flag.Bool("writable", false, "let programs change files under the root")
 		tools     = flag.String("tools", defaultTools, "tools manifest (set by the Nix package)")
@@ -96,6 +97,9 @@ func run() error {
 			return fmt.Errorf("--create-in %q must be a folder inside the root", c)
 		}
 	}
+	if !validPath(*path) {
+		return fmt.Errorf("--path %q must look like /name (letters, digits, - _ . and /, no trailing slash)", *path)
+	}
 	m, err := manifest.Load(*tools)
 	if err != nil {
 		return err
@@ -115,6 +119,7 @@ func run() error {
 		Shell:        &shell.Config{Root: dir, Writable: *writable, Tools: m, Self: self},
 		CreateIn:     createIn,
 		AllowedHosts: hosts,
+		Path:         *path,
 		Token:        token,
 		Version:      version,
 		Log:          log,
@@ -127,7 +132,7 @@ func run() error {
 	}
 	errc := make(chan error, 1)
 	go func() { errc <- srv.ListenAndServe() }()
-	log.Info("serving", "root", dir, "listen", *listen, "writable", *writable, "create_in", createIn.String(), "allowed_hosts", hosts.String(), "version", version)
+	log.Info("serving", "root", dir, "listen", *listen, "path", *path, "writable", *writable, "create_in", createIn.String(), "allowed_hosts", hosts.String(), "version", version)
 	select {
 	case err := <-errc:
 		return err
@@ -177,4 +182,17 @@ func inCredentials(path string) bool {
 	}
 	rel, err := filepath.Rel(dir, path)
 	return err == nil && rel != ".." && !strings.HasPrefix(rel, "../")
+}
+
+// validPath accepts "/x", "/x/y", … with plain characters only.
+func validPath(p string) bool {
+	if len(p) < 2 || p[0] != '/' || strings.HasSuffix(p, "/") || strings.Contains(p, "//") || strings.Contains(p, "..") {
+		return false
+	}
+	for _, r := range p {
+		if !(r >= 'a' && r <= 'z' || r >= 'A' && r <= 'Z' || r >= '0' && r <= '9' || strings.ContainsRune("/-_.", r)) {
+			return false
+		}
+	}
+	return true
 }

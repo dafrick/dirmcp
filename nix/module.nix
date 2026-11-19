@@ -30,6 +30,12 @@ let
           default = "127.0.0.1:8090";
           description = "Address of the MCP endpoint (`/mcp`). Keep it on loopback and put an HTTPS proxy in front.";
         };
+        path = mkOption {
+          type = types.strMatching "/[A-Za-z0-9._/-]*[A-Za-z0-9._-]";
+          default = "/mcp";
+          example = "/notes";
+          description = "Path of the MCP endpoint. Every other path is 404.";
+        };
         allowedHosts = mkOption {
           type = types.listOf types.str;
           default = [ ];
@@ -101,6 +107,8 @@ let
             i.root
             "--listen"
             i.listen
+            "--path"
+            i.path
           ]
           ++ lib.optional i.writable "--writable"
           ++ lib.concatMap (h: [

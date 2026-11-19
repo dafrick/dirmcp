@@ -2,6 +2,12 @@
 
 All notable changes are listed here. Format: [Keep a Changelog](https://keepachangelog.com). Versioning: [SemVer](https://semver.org), see `CONTRIBUTING.md`.
 
+## [0.4.0] - 2026-11-19
+
+### Added
+
+- `--path` (module: `path`): the endpoint's path, default `/mcp`, e.g. `/notes`. Every other path is 404.
+
 ## [0.3.1] - 2026-11-19
 
 ### Fixed

@@ -136,6 +136,29 @@ func TestEmptyHost(t *testing.T) {
 	}
 }
 
+// A custom path replaces /mcp; nothing else answers.
+func TestPath(t *testing.T) {
+	root := t.TempDir()
+	h := Handler(t.Context(), Config{Shell: &shell.Config{Root: root}, Token: []byte(token), Path: "/obsidian",
+		Version: "test", Log: slog.New(slog.NewTextHandler(io.Discard, nil))})
+	s := httptest.NewServer(h)
+	defer s.Close()
+	for path, want := range map[string]int{"/obsidian": http.StatusOK, "/mcp": http.StatusNotFound, "/obsidian/x": http.StatusNotFound} {
+		req, _ := http.NewRequest("POST", s.URL+path, strings.NewReader(initBody))
+		req.Header.Set("Content-Type", "application/json")
+		req.Header.Set("Accept", "application/json, text/event-stream")
+		req.Header.Set("Authorization", "Bearer "+token)
+		resp, err := http.DefaultClient.Do(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		resp.Body.Close()
+		if resp.StatusCode != want {
+			t.Errorf("%s: status %d, want %d", path, resp.StatusCode, want)
+		}
+	}
+}
+
 type bearer struct{ rt http.RoundTripper }
 
 func (b bearer) RoundTrip(r *http.Request) (*http.Response, error) {

@@ -30,7 +30,8 @@ openssl rand -hex 32 > token && chmod 600 token
 |---|---|---|
 | `--root DIR` | required | the directory to serve |
 | `--token-file FILE` | required | bearer token, ≥ 32 bytes, mode 0600 or 0400 |
-| `--listen ADDR` | `127.0.0.1:8090` | MCP endpoint is `http://ADDR/mcp` (Streamable HTTP) |
+| `--listen ADDR` | `127.0.0.1:8090` | address of the MCP endpoint (Streamable HTTP) |
+| `--path PATH` | `/mcp` | path of the endpoint, e.g. `/notes`; every other path is 404 |
 | `--writable` | off | programs may change files |
 | `--create-in DIR` | none | enable `create` below `DIR` (repeatable) |
 | `--allowed-host NAME` | none | public name a proxy in front uses (Host header), e.g. `notes.example.ts.net` (repeatable). Other names are refused (DNS rebinding); localhost always works |
@@ -48,6 +49,7 @@ imports = [ inputs.dirmcp.nixosModules.default ];
 services.dirmcp.instances.notes = {
   root = "/srv/notes";
   listen = "127.0.0.1:8090";
+  path = "/notes";                                # default /mcp
   tokenFile = "/run/secrets/dirmcp_notes_token"; # root-only, e.g. sops-nix
   createIn = [ "Inbox" ];                         # read-only, plus new files in Inbox/
   allowedHosts = [ "box.example.ts.net" ];        # the proxy's public name
