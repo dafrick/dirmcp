@@ -32,6 +32,10 @@ type Config struct {
 	Token    []byte
 	Version  string
 	Log      *slog.Logger
+	// AllowedHosts are public names (Host header) a proxy in front may use,
+	// e.g. "notes.example.ts.net". Localhost names are always allowed; any
+	// other Host is refused (DNS rebinding protection).
+	AllowedHosts []string
 }
 
 // ShIn is the input of the sh tool.
@@ -86,11 +90,14 @@ func Handler(ctx context.Context, c Config) http.Handler {
 				return result("created "+in.Path, err)
 			})
 	}
+	// The SDK refuses non-localhost Host headers on a loopback listener,
+	// which also refuses every request through a proxy. We do the same check
+	// ourselves, with the proxy's public names added.
 	h := mcp.NewStreamableHTTPHandler(func(*http.Request) *mcp.Server { return s },
-		&mcp.StreamableHTTPOptions{Stateless: true})
+		&mcp.StreamableHTTPOptions{Stateless: true, DisableLocalhostProtection: true})
 	authed := auth.RequireBearerToken(verifier(c), &auth.RequireBearerTokenOptions{AllowMissingExpiration: true})(h)
 	mux := http.NewServeMux()
-	mux.Handle("/mcp", limitBody(authed))
+	mux.Handle("/mcp", checkHost(c, limitBody(authed)))
 	return mux
 }
 
@@ -135,6 +142,28 @@ func verifier(c Config) auth.TokenVerifier {
 		}
 		return nil, auth.ErrInvalidToken
 	}
+}
+
+// checkHost refuses requests whose Host is neither a localhost name nor one
+// of the allowed public names (case and port do not matter).
+func checkHost(c Config, h http.Handler) http.Handler {
+	allowed := map[string]bool{"localhost": true}
+	for _, a := range c.AllowedHosts {
+		allowed[strings.ToLower(a)] = true
+	}
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		host := r.Host
+		if hh, _, err := net.SplitHostPort(host); err == nil {
+			host = hh
+		}
+		host = strings.ToLower(strings.Trim(host, "[]"))
+		if ip := net.ParseIP(host); (ip != nil && ip.IsLoopback()) || allowed[host] {
+			h.ServeHTTP(w, r)
+			return
+		}
+		c.Log.Warn("refused host", "host", clip(r.Host, 100))
+		http.Error(w, "forbidden host", http.StatusForbidden)
+	})
 }
 
 func limitBody(h http.Handler) http.Handler {

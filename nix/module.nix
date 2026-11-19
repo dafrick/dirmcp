@@ -30,6 +30,12 @@ let
           default = "127.0.0.1:8090";
           description = "Address of the MCP endpoint (`/mcp`). Keep it on loopback and put an HTTPS proxy in front.";
         };
+        allowedHosts = mkOption {
+          type = types.listOf types.str;
+          default = [ ];
+          example = [ "notes.example.ts.net" ];
+          description = "Public names a proxy in front uses in the Host header (the server refuses others; localhost is always allowed).";
+        };
         tokenFile = mkOption {
           type = types.pathWith {
             inStore = false;
@@ -97,6 +103,10 @@ let
             i.listen
           ]
           ++ lib.optional i.writable "--writable"
+          ++ lib.concatMap (h: [
+            "--allowed-host"
+            h
+          ]) i.allowedHosts
           ++ lib.concatMap (d: [
             "--create-in"
             d

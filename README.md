@@ -33,6 +33,7 @@ openssl rand -hex 32 > token && chmod 600 token
 | `--listen ADDR` | `127.0.0.1:8090` | MCP endpoint is `http://ADDR/mcp` (Streamable HTTP) |
 | `--writable` | off | programs may change files |
 | `--create-in DIR` | none | enable `create` below `DIR` (repeatable) |
+| `--allowed-host NAME` | none | public name a proxy in front uses (Host header), e.g. `notes.example.ts.net` (repeatable). Other names are refused (DNS rebinding); localhost always works |
 | `--tools FILE` | set by the package | tools manifest: program → store path |
 
 Clients send `Authorization: Bearer <token>`. For a claude.ai custom connector, put the URL of a public HTTPS proxy in front of `/mcp` and the header under "Request headers". The binary must come from the Nix package: it pins every tool to a store path and never searches `PATH`.
@@ -49,6 +50,7 @@ services.dirmcp.instances.notes = {
   listen = "127.0.0.1:8090";
   tokenFile = "/run/secrets/dirmcp_notes_token"; # root-only, e.g. sops-nix
   createIn = [ "Inbox" ];                         # read-only, plus new files in Inbox/
+  allowedHosts = [ "box.example.ts.net" ];        # the proxy's public name
   # writable = true;                              # let programs change files
   # user = "…"; extraGroups = [ "…" ];            # to share access to the root
 };
@@ -62,7 +64,7 @@ Each instance is `dirmcp-<name>.service`, running as its own system user (create
 
 - **Serve as little as possible.** Point `--root` at the folder you mean, not its parent. Prefer read-only with `--create-in` for additions; use `--writable` only if you need edits, and keep backups or version history (e.g. Obsidian Sync) of the folder.
 - **Run as a user that can only reach that folder.** File permissions are the last line: a read-only instance should run as a user without write access to the root, so a bug in dirmcp cannot write either. The module creates its own user; give it access to the root through a group or ACLs. Never run it as root (the module refuses) or as your own account. New files are group-readable and group-writable (`UMask=0007`), so do not give the service a widely shared primary group.
-- **Keep it on loopback and put HTTPS in front.** dirmcp speaks plain HTTP. Expose only `/mcp` through a TLS reverse proxy or a tunnel (Tailscale Funnel, Cloudflare Tunnel). Never bind it to a public interface directly.
+- **Keep it on loopback and put HTTPS in front.** dirmcp speaks plain HTTP. Expose only `/mcp` through a TLS reverse proxy or a tunnel (Tailscale Funnel, Cloudflare Tunnel), and list its public name with `--allowed-host` (other Host headers are refused). Never bind it to a public interface directly.
 - **Token.** 32 random bytes or more (`openssl rand -hex 32`), stored root-only (sops, agenix) and passed as a credential. Put it only into the client's connector settings (claude.ai: "Request headers", `Authorization: Bearer …`). Rotate it if it may have leaked: change the secret, restart the service, update the connector.
 - **Watch it.** Every call is logged: tool, the first 200 characters of the command, exit code, size (`journalctl -u dirmcp-<name>`). File contents are not logged, but a command can contain text (`echo … >`, here-docs), so treat the journal as sensitive. Failed tokens are logged with the remote address; behind a proxy or tunnel that is always the proxy (127.0.0.1).
 - **Switch it off** at once with `systemctl stop dirmcp-<name>` (or by removing the tunnel), then rotate the token.
