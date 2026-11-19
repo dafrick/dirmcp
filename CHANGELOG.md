@@ -2,6 +2,12 @@
 
 All notable changes are listed here. Format: [Keep a Changelog](https://keepachangelog.com). Versioning: [SemVer](https://semver.org), see `CONTRIBUTING.md`.
 
+## [0.3.1] - 2026-11-19
+
+### Fixed
+
+- Requests through a proxy or tunnel (Host = the public name) were refused with 403 by the MCP SDK's DNS-rebinding check. New `--allowed-host` (module: `allowedHosts`): dirmcp checks the Host itself, allowing localhost names and exactly the listed public names.
+
 ## [0.3.0] - 2026-11-18
 
 ### Added
